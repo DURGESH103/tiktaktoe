@@ -18,13 +18,17 @@ export function shareCard({
   color,
   title,
   subtitle,
+  theme = "default",
 }: {
   avatar?: string;
   color?: string;
   title: string;
   subtitle: string;
+  /** "couple": rose glow and a row of hearts instead of X/O marks. */
+  theme?: "default" | "couple";
 }) {
   const [c1, c2] = GRADIENTS[color ?? ""] ?? GRADIENTS.violet;
+  const couple = theme === "couple";
   return new ImageResponse(
     (
       <div
@@ -38,8 +42,9 @@ export function shareCard({
           color: "#eef0ff",
           // Satori rejects a colour inside the `background` shorthand, so colour and gradients are split.
           backgroundColor: "#080914",
-          backgroundImage:
-            "radial-gradient(circle at 10% 0%, rgba(167,139,250,.45), transparent 55%), radial-gradient(circle at 100% 20%, rgba(56,189,248,.3), transparent 50%), radial-gradient(circle at 50% 120%, rgba(244,114,182,.35), transparent 55%)",
+          backgroundImage: couple
+            ? "radial-gradient(circle at 10% 0%, rgba(251,113,133,.5), transparent 55%), radial-gradient(circle at 100% 20%, rgba(236,72,153,.35), transparent 50%), radial-gradient(circle at 50% 120%, rgba(244,63,94,.4), transparent 55%)"
+            : "radial-gradient(circle at 10% 0%, rgba(167,139,250,.45), transparent 55%), radial-gradient(circle at 100% 20%, rgba(56,189,248,.3), transparent 50%), radial-gradient(circle at 50% 120%, rgba(244,114,182,.35), transparent 55%)",
         }}
       >
         {/* Logo */}
@@ -75,8 +80,15 @@ export function shareCard({
           </div>
         </div>
 
+        {couple && (
+          <div style={{ display: "flex", gap: 18, fontSize: 40 }}>
+            {["💖", "💞", "💕", "💗", "💓"].map((h, i) => (
+              <span key={i}>{h}</span>
+            ))}
+          </div>
+        )}
         {/* Decorative X / O strip */}
-        <div style={{ display: "flex", gap: 20, opacity: 0.9 }}>
+        <div style={{ display: couple ? "none" : "flex", gap: 20, opacity: 0.9 }}>
           {["X", "O", "X", "O", "X"].map((m, i) => (
             <svg key={i} width="44" height="44" viewBox="0 0 100 100">
               {m === "X" ? (

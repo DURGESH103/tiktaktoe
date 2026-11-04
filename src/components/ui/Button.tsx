@@ -5,7 +5,7 @@ import { motion, type HTMLMotionProps } from "framer-motion";
 import Link from "next/link";
 import { forwardRef } from "react";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "whatsapp";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "whatsapp" | "romance";
 type Size = "md" | "lg";
 
 const base =
@@ -17,6 +17,8 @@ const variants: Record<Variant, string> = {
   secondary: "glass text-fg hover:bg-fg/[0.08]",
   ghost: "text-muted hover:bg-fg/[0.06] hover:text-fg",
   danger: "bg-danger/10 text-danger hover:bg-danger/20",
+  // Couple Challenge accent. Deep enough that white text keeps ≥4.5:1 contrast.
+  romance: "bg-gradient-to-br from-rose-600 via-pink-600 to-fuchsia-600 text-white shadow-lg shadow-rose-500/30 hover:brightness-110",
   // Darker than WhatsApp's brand green so white text keeps ≥4.5:1 contrast.
   whatsapp: "bg-emerald-700 text-white shadow-lg shadow-emerald-700/25 hover:bg-emerald-800",
 };

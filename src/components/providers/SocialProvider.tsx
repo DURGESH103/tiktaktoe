@@ -5,8 +5,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { ChallengeCards } from "@/components/friends/ChallengeCards";
 import { Toaster, type Toast } from "@/components/ui/Toaster";
 import { toErrorCode, type ErrorCode } from "@/lib/errors";
+import { roomPath } from "@/lib/games";
 import { canChallenge, relationFor, secondsLeft, type Challenge, type FriendsData, type FriendStatus, type PresenceState, type Relation } from "@/lib/social";
 import { getSupabase } from "@/lib/supabase/client";
+import type { GameType } from "@/types/db";
 import { useAuth } from "./AuthProvider";
 import { useSettings } from "./SettingsProvider";
 
@@ -33,7 +35,7 @@ interface Social {
   removeFriend: (handle: string) => Promise<ErrorCode | null>;
   block: (handle: string) => Promise<ErrorCode | null>;
   unblock: (handle: string) => Promise<ErrorCode | null>;
-  challenge: (handle: string) => Promise<ErrorCode | null>;
+  challenge: (handle: string, gameType?: GameType) => Promise<ErrorCode | null>;
   respondChallenge: (id: string, accept: boolean) => Promise<ErrorCode | null>;
   cancelChallenge: (id: string) => Promise<ErrorCode | null>;
   toast: (t: Omit<Toast, "id">) => void;
@@ -135,7 +137,7 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
   // ------------------------------------------------------------ presence
   // One shared channel, keyed by public handle (never the auth id). Offline = not present.
   const myState: PresenceState =
-    pathname?.startsWith("/game/") ? "in_game" : typeof document !== "undefined" && document.visibilityState === "hidden" ? "away" : "online";
+    pathname?.startsWith("/game/") || pathname?.startsWith("/couple/") ? "in_game" : typeof document !== "undefined" && document.visibilityState === "hidden" ? "away" : "online";
   const [, forceVisibility] = useState(0);
   const myStateRef = useRef(myState);
   myStateRef.current = myState;
@@ -237,7 +239,7 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
       const before = prev.get(c.id);
       if (c.direction === "in" && c.status === "pending" && !before && secondsLeft(c, clockOffset) > 0) feedback("join", "join");
       if (c.direction !== "out" || before?.status !== "pending" || c.status === "pending") continue;
-      if (c.status === "accepted" && c.room_code) router.push(`/game/${c.room_code}`);
+      if (c.status === "accepted" && c.room_code) router.push(roomPath(c.room_code, c.game_type));
       else if (c.status === "declined") toast({ title: `${c.other.name} declined`, avatar: c.other });
       else if (c.status === "expired") toast({ title: `No response from ${c.other.name}`, avatar: c.other });
       else if (c.status === "cancelled") toast({ title: "Challenge cancelled", avatar: c.other });
@@ -257,7 +259,7 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
       });
       if (fr) {
         feedback("join", "join");
-        toast({ title: `${fr.player.name} is online`, avatar: fr.player, action: { label: "Challenge", onClick: () => void challengeRef.current(handle) } });
+        toast({ title: `${fr.player.name} is online`, avatar: fr.player, action: { label: "Challenge", href: "/friends" } });
       }
     }
   }, [presence, watching, statusOf, data, feedback, toast]);
@@ -292,21 +294,19 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const challenge = useCallback(
-    async (h: string): Promise<ErrorCode | null> => {
-      const { data: d, error } = await getSupabase().rpc("send_challenge", { p_handle: h });
+    async (h: string, gameType: GameType = "tictactoe"): Promise<ErrorCode | null> => {
+      const { data: d, error } = await getSupabase().rpc("send_challenge", { p_handle: h, p_game_type: gameType });
       if (error) {
         console.warn("[friends] send_challenge failed:", error);
         return toErrorCode(error);
       }
       const c = d as Challenge;
       applyChallenge(c);
-      if (c.status === "accepted" && c.room_code) router.push(`/game/${c.room_code}`); // they'd challenged me too
+      if (c.status === "accepted" && c.room_code) router.push(roomPath(c.room_code, c.game_type)); // they'd challenged me too
       return null;
     },
     [applyChallenge, router],
   );
-  const challengeRef = useRef(challenge);
-  challengeRef.current = challenge;
 
   const respondChallenge = useCallback(
     async (id: string, accept: boolean): Promise<ErrorCode | null> => {
@@ -314,7 +314,7 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
       if (error) return toErrorCode(error);
       const c = d as Challenge;
       applyChallenge(c);
-      if (c.status === "accepted" && c.room_code) router.push(`/game/${c.room_code}`);
+      if (c.status === "accepted" && c.room_code) router.push(roomPath(c.room_code, c.game_type));
       else if (accept && c.status === "expired") toast({ title: "That challenge expired", avatar: c.other });
       return null;
     },

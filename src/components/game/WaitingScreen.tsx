@@ -10,7 +10,20 @@ import { copyText } from "@/lib/clipboard";
 import { roomUrl } from "@/lib/code";
 import type { Player } from "@/types/db";
 
-export function WaitingScreen({ code, me, onCancel }: { code: string; me?: Player; onCancel: () => void }) {
+/** `inviteUrl` / `inviteText` default to the Tic-Tac-Toe invite; other games pass their own. */
+export function WaitingScreen({
+  code,
+  me,
+  onCancel,
+  inviteUrl,
+  inviteText,
+}: {
+  code: string;
+  me?: Player;
+  onCancel: () => void;
+  inviteUrl?: string;
+  inviteText?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   return (
@@ -64,8 +77,8 @@ export function WaitingScreen({ code, me, onCancel }: { code: string; me?: Playe
         </p>
 
         <ShareActions
-          url={roomUrl(code)}
-          text={`${me?.name ?? "Your friend"} invited you to play Tic-Tac-Toe! Room code ${code}`}
+          url={inviteUrl ?? roomUrl(code)}
+          text={inviteText ?? `${me?.name ?? "Your friend"} invited you to play Tic-Tac-Toe! Room code ${code}`}
           label="Invite a friend"
         />
       </GlassCard>

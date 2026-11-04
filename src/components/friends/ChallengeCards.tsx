@@ -6,13 +6,14 @@ import { useSocial } from "@/components/providers/SocialProvider";
 import { AvatarBadge } from "@/components/ui/AvatarBadge";
 import { Button } from "@/components/ui/Button";
 import { Portal } from "@/components/ui/Portal";
+import { GAMES } from "@/lib/games";
 import { secondsLeft, type Challenge } from "@/lib/social";
 
 const TOTAL = 60;
 
 /**
  * Pop-up cards for live challenges, shown on every page:
- * incoming ("Rahul challenged you!", Accept / Decline) and outgoing ("Waiting for Rahul…", Cancel),
+ * incoming ("Rahul challenged you to Couple Challenge 💞!", Accept / Decline) and outgoing ("Waiting for Rahul…", Cancel),
  * both with the same 60-second countdown (corrected for clock differences between phones).
  */
 export function ChallengeCards() {
@@ -53,7 +54,9 @@ export function ChallengeCards() {
         <AnimatePresence>
           {incoming && (
             <Card key={incoming.id} c={incoming} left={secondsLeft(incoming, offset, now)}>
-              <p className="font-display text-lg font-semibold leading-tight">{incoming.other.name} challenged you!</p>
+              <p className="font-display text-lg font-semibold leading-tight">
+                {incoming.other.name} challenged you to {GAMES[incoming.game_type ?? "tictactoe"].name}!
+              </p>
               <div className="mt-3 flex gap-2">
                 <Button variant="secondary" className="flex-1" onClick={() => void social.respondChallenge(incoming.id, false)}>
                   Decline

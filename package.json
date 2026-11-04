@@ -11,7 +11,10 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "check:chat": "node scripts/check-chat.mjs",
-    "check:friends": "node scripts/check-friends.mjs"
+    "check:friends": "node scripts/check-friends.mjs",
+    "e2e:tictactoe": "node scripts/e2e-tictactoe.mjs",
+    "check:rooms": "node scripts/check-rooms.mjs",
+    "e2e:couple": "node scripts/e2e-couple.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -31,6 +34,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.6.2",
+    "playwright-core": "^1.64.1",
     "postcss": "^8.5.32",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.9.3",

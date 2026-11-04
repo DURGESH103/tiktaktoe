@@ -15,9 +15,10 @@ import { ShareActions } from "@/components/ui/ShareActions";
 import { Sheet } from "@/components/ui/Sheet";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ERROR_COPY, type ErrorCode } from "@/lib/errors";
+import { GAME_ORDER, GAMES } from "@/lib/games";
 import { canChallenge, secondsLeft, sortFriends, statusLabel, type FriendEntry, type Relation } from "@/lib/social";
 import { getSupabase } from "@/lib/supabase/client";
-import type { PublicPlayer } from "@/types/db";
+import type { GameType, PublicPlayer } from "@/types/db";
 import { FriendButton } from "./FriendButton";
 import { StatusDot } from "./StatusDot";
 
@@ -150,6 +151,7 @@ function FriendRow({ f, onMenu }: { f: FriendEntry; onMenu: () => void }) {
 function ChallengeButton({ player }: { player: PublicPlayer }) {
   const social = useSocial()!;
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const status = social.statusOf(player.handle);
   const waiting = social.challenges.find(
@@ -182,22 +184,58 @@ function ChallengeButton({ player }: { player: PublicPlayer }) {
       </button>
     );
   }
+  async function send(game: GameType) {
+    setPicking(false);
+    setBusy(true);
+    const err = await social.challenge(player.handle, game);
+    setBusy(false);
+    if (err) social.toast({ title: ERROR_COPY[err].title, body: ERROR_COPY[err].body });
+  }
+
   return (
-    <Button
-      variant={canChallenge(status) ? "primary" : "secondary"}
-      disabled={!canChallenge(status)}
-      loading={busy}
-      onClick={async () => {
-        setBusy(true);
-        const err = await social.challenge(player.handle);
-        setBusy(false);
-        if (err) social.toast({ title: ERROR_COPY[err].title, body: ERROR_COPY[err].body });
-      }}
-      className="shrink-0 !px-3 text-sm"
-      aria-label={canChallenge(status) ? `Challenge ${player.name}` : `${player.name} is in a game`}
-    >
-      {canChallenge(status) ? "Challenge" : "In a game"}
-    </Button>
+    <>
+      <Button
+        variant={canChallenge(status) ? "primary" : "secondary"}
+        disabled={!canChallenge(status)}
+        loading={busy}
+        onClick={() => setPicking(true)}
+        className="shrink-0 !px-3 text-sm"
+        aria-label={canChallenge(status) ? `Challenge ${player.name}` : `${player.name} is in a game`}
+      >
+        {canChallenge(status) ? "Challenge" : "In a game"}
+      </Button>
+      {/* Which game? */}
+      <Sheet open={picking} onClose={() => setPicking(false)} labelledBy="pick-game-title">
+        <div className="flex flex-col gap-3 pb-1">
+          <h2 id="pick-game-title" className="font-display text-xl font-semibold">
+            Challenge {player.name} to…
+          </h2>
+          {GAME_ORDER.map((g, i) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => send(g)}
+              data-autofocus={i === 0 || undefined}
+              className={clsx(
+                "glass flex min-h-16 items-center gap-3 rounded-2xl px-4 text-left transition-colors hover:bg-fg/[0.06]",
+                g === "couple" && "theme-couple",
+              )}
+            >
+              <span className="text-2xl" aria-hidden>
+                {g === "tictactoe" ? "❌" : "💞"}
+              </span>
+              <span>
+                <span className="block font-semibold">{GAMES[g].name}</span>
+                <span className="block text-xs text-muted">{GAMES[g].tagline}</span>
+              </span>
+            </button>
+          ))}
+          <Button variant="ghost" onClick={() => setPicking(false)}>
+            Cancel
+          </Button>
+        </div>
+      </Sheet>
+    </>
   );
 }
 

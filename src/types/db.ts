@@ -1,6 +1,7 @@
 export type Mark = "X" | "O";
 export type CellValue = Mark | null;
 export type RoomStatus = "waiting" | "playing" | "abandoned";
+export type GameType = "tictactoe" | "couple";
 export type GameStatus = "playing" | "finished" | "abandoned";
 export type Winner = Mark | "draw";
 
@@ -20,6 +21,8 @@ export interface Room {
   player_x: string;
   player_o: string | null;
   status: RoomStatus;
+  /** Added in migration 0009; missing on rows read by older code, so treat undefined as tictactoe. */
+  game_type?: GameType;
   created_at: string;
   updated_at: string;
 }
@@ -94,6 +97,7 @@ export interface RoomInvite {
   host: PublicPlayer | null;
   status: RoomStatus;
   is_full: boolean;
+  game_type?: GameType;
 }
 
 export interface RoomMessage {

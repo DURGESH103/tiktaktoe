@@ -27,6 +27,7 @@ import { useVisualViewport } from "@/hooks/useVisualViewport";
 import { ERROR_COPY, type ErrorCode } from "@/lib/errors";
 import { celebrate } from "@/lib/confetti";
 import { other, parseBoard } from "@/lib/game/logic";
+import { roomPath } from "@/lib/games";
 import { cellName } from "@/lib/history";
 import { reactionLabel } from "@/lib/reactions";
 import { PlayerChip } from "./PlayerChip";
@@ -50,6 +51,12 @@ export function GameRoom({ code }: { code: string }) {
   const { user } = useAuth();
   const g = useGameRoom(code, user?.id ?? null);
   const presence = useOpponentPresence(g.opponentId, g.presentIds);
+
+  // A Couple Challenge code opened at /game/CODE (e.g. typed by hand): send it to its own page.
+  const isOtherGame = !!g.room?.game_type && g.room.game_type !== "tictactoe";
+  useEffect(() => {
+    if (isOtherGame) router.replace(roomPath(code, g.room?.game_type));
+  }, [isOtherGame, code, g.room?.game_type, router]);
   const [dismissedLeft, setDismissedLeft] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -292,7 +299,7 @@ export function GameRoom({ code }: { code: string }) {
     </>
   );
 
-  if (g.loading) return shell(<GameSkeleton />);
+  if (g.loading || isOtherGame) return shell(<GameSkeleton />);
 
   if (g.error) {
     const copy = ERROR_COPY[g.error];

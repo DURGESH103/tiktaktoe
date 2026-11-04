@@ -1,17 +1,19 @@
 "use client";
 
-import { motion } from "framer-motion";
+import clsx from "clsx";
+import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useAuth } from "@/components/providers/AuthProvider";
 import { FriendsIconLink } from "@/components/friends/FriendsIconLink";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { CODE_LENGTH, isValidCode, normalizeCode } from "@/lib/code";
 import { ERROR_COPY, toErrorCode } from "@/lib/errors";
+import { GAME_ORDER, GAMES, roomPath } from "@/lib/games";
 import { getSupabase } from "@/lib/supabase/client";
-import type { Room } from "@/types/db";
+import type { GameType, Room, RoomInvite } from "@/types/db";
 
 const item = {
   hidden: { opacity: 0, y: 16 },
@@ -21,30 +23,44 @@ const item = {
 export default function HomePage() {
   const router = useRouter();
   const { player } = useAuth();
+  // Tic-Tac-Toe is selected by default, so "Create game" is still one tap away.
+  const [game, setGame] = useState<GameType>("tictactoe");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [code, setCode] = useState("");
+  const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
 
   async function createGame() {
     setCreating(true);
     setCreateError(null);
-    const { data, error } = await getSupabase().rpc("create_room");
+    // Tic-Tac-Toe keeps using create_room() exactly as before.
+    const { data, error } =
+      game === "tictactoe" ? await getSupabase().rpc("create_room") : await getSupabase().rpc("create_room_for", { p_game_type: game });
     if (error || !data) {
       setCreateError(ERROR_COPY[toErrorCode(error)].body);
       setCreating(false);
       return;
     }
-    router.push(`/game/${(data as Room).code}`);
+    router.push(roomPath((data as Room).code, game));
   }
 
-  function joinGame(e: React.FormEvent) {
+  /** One box for every game: look up which game the code belongs to, then open it. */
+  async function joinGame(e: React.FormEvent) {
     e.preventDefault();
     if (!isValidCode(code)) {
       setJoinError(`Codes are ${CODE_LENGTH} characters, like K7P2Q.`);
       return;
     }
-    router.push(`/game/${code}`);
+    setJoining(true);
+    const { data, error } = await getSupabase().rpc("get_room_invite", { p_code: code });
+    if (!error && !data) {
+      setJoining(false);
+      setJoinError(ERROR_COPY.ROOM_NOT_FOUND.body);
+      return;
+    }
+    // If the lookup itself failed (e.g. offline), fall back to the Tic-Tac-Toe page, which redirects other games.
+    router.push(roomPath(code, (data as RoomInvite | null)?.game_type));
   }
 
   return (
@@ -56,25 +72,38 @@ export default function HomePage() {
         animate="show"
         variants={{ show: { transition: { staggerChildren: 0.07 } } }}
       >
-        <motion.section variants={item} className="py-4">
-          <p className="text-muted">Hey {player?.name} {player?.avatar}</p>
+        <motion.section variants={item} className="py-3">
+          <p className="text-muted">
+            Hey {player?.name} {player?.avatar}
+          </p>
           <h1 className="mt-1 font-display text-4xl font-bold leading-tight tracking-tight">
-            Ready for a{" "}
-            <span className="bg-gradient-to-r from-x via-accent to-o bg-clip-text text-transparent">quick match?</span>
+            What are we{" "}
+            <span className="bg-gradient-to-r from-x via-accent to-o bg-clip-text text-transparent">playing?</span>
           </h1>
         </motion.section>
 
+        {/* Game picker */}
+        <motion.div variants={item} role="radiogroup" aria-label="Choose a game" className="grid grid-cols-2 gap-3">
+          {GAME_ORDER.map((g) => (
+            <GameCard key={g} game={g} selected={game === g} onSelect={() => setGame(g)} />
+          ))}
+        </motion.div>
+
         <motion.div variants={item}>
-          <GlassCard className="flex flex-col gap-3 p-5">
-            <div>
-              <h2 className="font-display text-lg font-semibold">Play with a friend</h2>
-              <p className="text-sm text-muted">Create a room and send them the link.</p>
-            </div>
-            <Button size="lg" onClick={createGame} loading={creating}>
+          <GlassCard className={clsx("flex flex-col gap-3 p-5 transition-colors", game === "couple" && "theme-couple")}>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div key={game} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}>
+                <h2 className="font-display text-lg font-semibold">{game === "tictactoe" ? "Play with a friend" : "Play together 💞"}</h2>
+                <p className="text-sm text-muted">
+                  {game === "tictactoe" ? "Create a room and send them the link." : "Compatibility tests, memories, questions and challenges for two."}
+                </p>
+              </motion.div>
+            </AnimatePresence>
+            <Button size="lg" onClick={createGame} loading={creating} variant={game === "couple" ? "romance" : "primary"}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
                 <path d="M12 5v14M5 12h14" />
               </svg>
-              Create game
+              {game === "tictactoe" ? "Create game" : "Create Couple Challenge"}
             </Button>
             {createError && (
               <p role="alert" className="text-sm text-danger">
@@ -92,7 +121,7 @@ export default function HomePage() {
                   <label htmlFor="join-code">Join with a code</label>
                 </h2>
                 <p id="join-hint" className="text-sm text-muted">
-                  Ask your friend for their 5-character code.
+                  Any game: ask your friend for their 5-character code.
                 </p>
               </div>
               <div className="flex gap-2">
@@ -114,7 +143,7 @@ export default function HomePage() {
                   aria-invalid={!!joinError}
                   className="glass min-h-14 w-full min-w-0 rounded-2xl px-4 text-center font-display text-2xl font-semibold uppercase tracking-[0.35em] text-fg placeholder:tracking-[0.35em] placeholder:text-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 />
-                <Button type="submit" size="lg" variant="secondary" disabled={code.length === 0} className="shrink-0">
+                <Button type="submit" size="lg" variant="secondary" disabled={code.length === 0} loading={joining} className="shrink-0">
                   Join
                 </Button>
               </div>
@@ -147,5 +176,47 @@ export default function HomePage() {
         </motion.div>
       </motion.main>
     </>
+  );
+}
+
+function GameCard({ game, selected, onSelect }: { game: GameType; selected: boolean; onSelect: () => void }) {
+  const g = GAMES[game];
+  return (
+    <motion.button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      whileTap={{ scale: 0.97 }}
+      className={clsx(
+        "glass relative flex min-h-28 flex-col items-start justify-between gap-2 overflow-hidden rounded-3xl p-4 text-left transition-shadow",
+        selected && (game === "couple" ? "ring-2 ring-rose-400/80" : "ring-2 ring-accent/80"),
+      )}
+    >
+      {selected && (
+        <motion.span
+          layoutId="game-pick"
+          aria-hidden
+          className={clsx("absolute inset-0", game === "couple" ? "bg-gradient-to-br from-rose-500/15 to-pink-500/10" : "bg-gradient-to-br from-x/10 to-o/10")}
+          transition={{ type: "spring", stiffness: 380, damping: 32 }}
+        />
+      )}
+      <span className="relative text-2xl" aria-hidden>
+        {game === "tictactoe" ? <TicTacToeGlyph /> : "💞"}
+      </span>
+      <span className="relative">
+        <span className="block font-display font-semibold leading-tight">{g.short}</span>
+        <span className="block text-xs text-muted">{g.tagline}</span>
+      </span>
+    </motion.button>
+  );
+}
+
+function TicTacToeGlyph() {
+  return (
+    <svg width="30" height="30" viewBox="0 0 32 32">
+      <path d="M5 5l9 9M14 5l-9 9" stroke="rgb(var(--x))" strokeWidth="3.5" strokeLinecap="round" />
+      <circle cx="22.5" cy="22.5" r="5.5" fill="none" stroke="rgb(var(--o))" strokeWidth="3.5" />
+    </svg>
   );
 }

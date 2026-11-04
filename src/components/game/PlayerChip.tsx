@@ -22,6 +22,7 @@ export function PlayerChip({
   presence,
   align = "left",
   onOpenProfile,
+  hideMark = false,
 }: {
   player?: Player;
   mark: Mark;
@@ -30,6 +31,8 @@ export function PlayerChip({
   presence?: PresenceStatus;
   align?: "left" | "right";
   onOpenProfile?: () => void;
+  /** Games without X/O (Couple Challenge) hide the mark. */
+  hideMark?: boolean;
 }) {
   const p = presence ? PRESENCE[presence] : null;
   const Root = onOpenProfile ? "button" : "div";
@@ -38,7 +41,7 @@ export function PlayerChip({
       {...(onOpenProfile && {
         type: "button" as const,
         onClick: onOpenProfile,
-        "aria-label": `${player?.name ?? "Opponent"}, playing ${mark}${p ? `, ${p.label.toLowerCase()}` : ""}. View profile`,
+        "aria-label": `${player?.name ?? "Opponent"}${hideMark ? "" : `, playing ${mark}`}${p ? `, ${p.label.toLowerCase()}` : ""}. View profile`,
       })}
       className={clsx(
         "relative flex min-w-0 flex-1 items-center gap-2 rounded-3xl p-2 sm:gap-3 sm:p-3",
@@ -75,8 +78,11 @@ export function PlayerChip({
             align === "right" && "justify-end",
           )}
         >
-          <span className={clsx("font-display text-sm font-bold", mark === "X" ? "text-x" : "text-o")}>{mark}</span>
-          <span className="truncate">· {isMe ? "You" : (p?.label ?? "")}</span>
+          {!hideMark && <span className={clsx("font-display text-sm font-bold", mark === "X" ? "text-x" : "text-o")}>{mark}</span>}
+          <span className="truncate">
+            {!hideMark && "· "}
+            {isMe ? "You" : (p?.label ?? "")}
+          </span>
         </span>
       </span>
     </Root>

@@ -119,7 +119,7 @@ describe("public profile data", () => {
 
   it("room invite preview shows the host and whether the room is full", async () => {
     const [{ i }] = await t.as<{ i: Json }>(null, "select get_room_invite('aaaaa') as i");
-    expect(i).toEqual({ host: { handle: await handleOf(A), name: "Rahul", avatar: "😎", color: "violet" }, status: "playing", is_full: true });
+    expect(i).toEqual({ host: { handle: await handleOf(A), name: "Rahul", avatar: "😎", color: "violet" }, status: "playing", is_full: true, game_type: "tictactoe" });
     expect((await t.as<{ i: Json }>(null, "select get_room_invite('ZZZZZ') as i"))[0].i).toBeNull();
   });
 });

@@ -39,6 +39,15 @@
   color-scheme: dark;
 }
 
+/* Couple Challenge: soft rose accent, scoped to its pages and cards. */
+.theme-couple {
+  --accent: 225 29 72;
+}
+.dark .theme-couple,
+.dark.theme-couple {
+  --accent: 251 113 133;
+}
+
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;

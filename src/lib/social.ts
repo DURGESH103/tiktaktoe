@@ -1,5 +1,5 @@
 import { relativeTime } from "@/lib/format";
-import type { HeadToHeadRecord, PublicPlayer } from "@/types/db";
+import type { GameType, HeadToHeadRecord, PublicPlayer } from "@/types/db";
 
 /** What a player broadcasts on the shared presence channel. Offline = not present at all. */
 export type PresenceState = "online" | "away" | "in_game";
@@ -27,6 +27,7 @@ export interface FriendsData {
 export type ChallengeStatus = "pending" | "accepted" | "declined" | "expired" | "cancelled";
 export interface Challenge {
   id: string;
+  game_type?: GameType;
   direction: "in" | "out";
   other: PublicPlayer;
   status: ChallengeStatus;
