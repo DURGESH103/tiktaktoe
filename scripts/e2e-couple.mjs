@@ -88,6 +88,69 @@ try {
   await A.waitForURL(/\/couple\/[A-Z0-9]{5}$/);
   ok(A.url() === B.url(), "accepting takes both players into the same Couple room");
   await A.getByRole("heading", { name: "Pick a mode" }).waitFor();
+
+  console.log("Stage 2: Compatibility Test");
+  // Rahul challenged, so he is player X. Answers are option indexes (0 = first option).
+  const pick = async (p, self, guess) => {
+    await p.getByRole("radiogroup", { name: "Your answer" }).getByRole("radio").nth(self).click();
+    await p.getByRole("radiogroup", { name: /^Your guess for/ }).getByRole("radio").nth(guess).click();
+    await p.getByRole("button", { name: /Lock in/ }).click();
+  };
+  await B.getByRole("radio", { name: "Hinglish" }).click();
+  await A.getByRole("button", { name: /Compatibility Test/ }).click();
+  await A.getByRole("dialog").getByRole("button", { name: /Food/ }).click();
+  await A.getByText("Question 1 of 10").waitFor();
+  await B.getByText("Question 1 of 10").waitFor();
+  ok(true, "starting a test takes both players to question 1");
+
+  await pick(A, 0, 1);
+  await A.getByText(/Waiting for Durgesh to answer/).waitFor();
+  ok(true, "first to answer sees 'Waiting for Durgesh to answer…' with their avatar");
+  await B.getByText("Rahul has answered ✓ — your turn!").waitFor();
+  ok(true, "partner sees 'Rahul has answered ✓' (without seeing the answer)");
+  await pick(B, 1, 0);
+  await A.getByRole("button", { name: "Next question →" }).waitFor();
+  await B.getByRole("button", { name: "Next question →" }).waitFor();
+  ok((await A.locator("li", { hasText: ", correct" }).count()) === 2, "reveal: both guesses right, shown on both screens");
+
+  await A.getByRole("button", { name: "Next question →" }).click();
+  await A.getByText("Question 2 of 10").waitFor();
+  await B.getByText("Question 2 of 10").waitFor();
+  ok(true, "Next moves both players on");
+
+  for (let q = 2; q <= 10; q++) {
+    await pick(A, 0, 0); // Rahul guesses Durgesh = option 0 (wrong: Durgesh picks 1)
+    await pick(B, 1, 0); // Durgesh guesses Rahul = option 0 (right)
+    if (q === 3) {
+      await B.reload();
+      await B.getByText("Question 3 of 10").waitFor();
+      ok(true, "refresh mid-test restores the question and progress");
+    }
+    const next = q < 10 ? "Next question →" : "See our result 💞";
+    await A.getByRole("button", { name: next }).waitFor();
+    if (q === 4) {
+      await B.getByRole("button", { name: /^Open chat/ }).click();
+      const sheet = await B.getByRole("dialog", { name: /Chat with/ }).boundingBox();
+      const btn = await B.getByRole("button", { name: next }).boundingBox();
+      ok(btn && sheet && btn.y + btn.height <= sheet.y + 1, "chat open: the answer area stays visible above the chat sheet");
+      await B.getByRole("button", { name: "Close chat" }).click();
+    }
+    await A.getByRole("button", { name: next }).click();
+    if (q < 10) await B.getByText(`Question ${q + 1} of 10`).waitFor();
+  }
+
+  // Rahul (X) guessed right 1/10, Durgesh (O) 10/10 → 11/20 = 55% → Perfect Chaos.
+  await A.getByLabel("55 percent compatible").waitFor();
+  await B.getByLabel("55 percent compatible").waitFor();
+  ok(true, "summary on both screens: 55% (calculated on the server)");
+  ok((await A.getByText("Perfect Chaos 😂").count()) === 1, "title: Perfect Chaos 😂");
+  ok((await A.getByText("Durgesh knows Rahul better 👀").count()) === 1, "who knows who better: Durgesh");
+  ok((await B.getByRole("radio", { name: "Hinglish" }).getAttribute("aria-checked")) === "true", "language choice is per player and survives refresh");
+  if (process.env.SHOTS) await A.screenshot({ path: `${process.env.SHOTS}/couple-summary.png` });
+
+  await A.getByRole("button", { name: "Back to modes" }).click();
+  await A.getByRole("heading", { name: "Pick a mode" }).waitFor();
+  ok(true, "back to the lobby");
 } catch (e) {
   failures++;
   console.log("  ✗ FAIL", e.message.split("\n")[0]);
