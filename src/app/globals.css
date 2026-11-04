@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Colour tokens (RGB triplets so Tailwind can apply alpha). Light first, dark overrides. */
+:root {
+  --bg: 242 243 250;
+  --fg: 14 17 35;
+  --muted: 78 86 112;
+  --surface: 255 255 255;
+  --line: 14 17 35;
+  --x: 2 110 196;
+  --o: 204 31 112;
+  --accent: 109 40 217;
+  --ok: 21 128 61;
+  --warn: 180 83 9;
+  --danger: 200 30 30;
+  --glass-a: 0.62;
+  --line-a: 0.09;
+  --shadow: 0 10px 40px -12px rgb(30 27 75 / 0.18);
+  color-scheme: light;
+}
+
+.dark {
+  --bg: 8 9 20;
+  --fg: 238 240 255;
+  --muted: 158 165 196;
+  --surface: 255 255 255;
+  --line: 255 255 255;
+  --x: 56 189 248;
+  --o: 244 114 182;
+  --accent: 167 139 250;
+  --ok: 74 222 128;
+  --warn: 251 191 36;
+  --danger: 248 113 113;
+  --glass-a: 0.055;
+  --line-a: 0.1;
+  --shadow: 0 10px 50px -12px rgb(0 0 0 / 0.6);
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-bg text-fg font-sans antialiased;
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+  }
+  :focus-visible {
+    outline: 3px solid rgb(var(--accent));
+    outline-offset: 3px;
+  }
+}
+
+@layer components {
+  .glass {
+    background: rgb(var(--surface) / var(--glass-a));
+    border: 1px solid rgb(var(--line) / var(--line-a));
+    box-shadow: var(--shadow);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    backdrop-filter: blur(20px) saturate(150%);
+  }
+
+  /* Ambient gradient backdrop, fixed so it never causes layout shift. */
+  .app-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(40rem 30rem at 10% -10%, rgb(var(--accent) / 0.28), transparent 60%),
+      radial-gradient(35rem 30rem at 110% 10%, rgb(var(--x) / 0.18), transparent 60%),
+      radial-gradient(40rem 30rem at 50% 120%, rgb(var(--o) / 0.18), transparent 60%);
+  }
+
+  .safe-x {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+}
