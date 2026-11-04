@@ -83,7 +83,7 @@ export function useCoupleSession(me: string | null) {
   );
 
   const start = useCallback(
-    (mode: string, category: string) => roomIdRef.current && call("start_session", { p_room_id: roomIdRef.current, p_mode: mode, p_category: category }),
+    (mode: string, category: string | null) => roomIdRef.current && call("start_session", { p_room_id: roomIdRef.current, p_mode: mode, p_category: category }),
     [call],
   );
   const submit = useCallback(
@@ -92,9 +92,14 @@ export function useCoupleSession(me: string | null) {
   );
   const next = useCallback(() => session && call("next_round", { p_session_id: session.id, p_from_idx: session.current_round }), [call, session]);
   const quit = useCallback(() => session && call("quit_session", { p_session_id: session.id }), [call, session]);
+  // Questions deck + Challenges
+  const nextCard = useCallback(() => session && call("next_card", { p_session_id: session.id, p_from_idx: session.current_round }), [call, session]);
+  const startTimer = useCallback((roundId: string) => call("start_challenge_timer", { p_round_id: roundId }), [call]);
+  const completeChallenge = useCallback((roundId: string, done: boolean) => call("complete_challenge", { p_round_id: roundId, p_done: done }), [call]);
+  const confirmChallenge = useCallback((roundId: string, ok: boolean) => call("confirm_challenge", { p_round_id: roundId, p_ok: ok }), [call]);
 
   const current = useMemo(() => rounds.find((r) => r.idx === session?.current_round) ?? null, [rounds, session?.current_round]);
   const answerOf = useCallback((roundId: string, playerId: string | null) => answers.find((a) => a.round_id === roundId && a.player_id === playerId) ?? null, [answers]);
 
-  return { session, rounds, current, questions, answerOf, busy, error, me, configure, onResync: load, start, submit, next, quit };
+  return { session, rounds, current, questions, answerOf, busy, error, me, configure, onResync: load, start, submit, next, quit, nextCard, startTimer, completeChallenge, confirmChallenge };
 }

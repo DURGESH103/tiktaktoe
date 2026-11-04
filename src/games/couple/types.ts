@@ -10,6 +10,25 @@ export interface CoupleQuestion {
   text_en: string;
   text_hi: string;
   options: { en: string; hi: string }[] | null;
+  /** Challenges: timer length in seconds. */
+  duration_secs: number | null;
+}
+
+export interface CompatResult {
+  x_correct: number;
+  o_correct: number;
+  same_answers: number;
+  title: CompatTitle;
+}
+export interface ChallengeResult {
+  completed: number;
+  failed: number;
+  skipped: number;
+  /** Consecutive completed challenges for this pair, across sessions. */
+  streak: number;
+}
+export interface DeckResult {
+  cards: number;
 }
 
 export interface CoupleSession {
@@ -23,7 +42,7 @@ export interface CoupleSession {
   total_rounds: number;
   points: number;
   compat_pct: number | null;
-  result: { x_correct: number; o_correct: number; same_answers: number; title: CompatTitle } | null;
+  result: CompatResult | ChallengeResult | DeckResult | null;
   started_at: string;
   ended_at: string | null;
 }
@@ -37,6 +56,9 @@ export interface CoupleRound {
   x_answered: boolean;
   o_answered: boolean;
   revealed_at: string | null;
+  /** Challenges */
+  timer_started_at: string | null;
+  outcome: "claimed" | "completed" | "failed" | "skipped" | null;
 }
 
 export interface CoupleAnswer {

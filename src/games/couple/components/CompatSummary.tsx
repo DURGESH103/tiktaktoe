@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { GlassCard } from "@/components/ui/GlassCard";
 import type { Player } from "@/types/db";
 import { categoryLabel, knowsBetter, TITLES } from "../lib/compat";
-import type { CoupleSession, Lang } from "../types";
+import type { CompatResult, CoupleSession, Lang } from "../types";
 import { HeartBurst } from "./HeartBurst";
 
 /** End of a Compatibility Test: server-calculated %, title, who knows whom better, points. */
@@ -27,7 +27,7 @@ export function CompatSummary({
   onBack: () => void;
 }) {
   const pct = session.compat_pct ?? 0;
-  const result = session.result ?? { x_correct: 0, o_correct: 0, same_answers: 0, title: "still_learning" as const };
+  const result = (session.result as CompatResult | null) ?? { x_correct: 0, o_correct: 0, same_answers: 0, title: "still_learning" as const };
   const title = TITLES[result.title];
   const better = knowsBetter(result);
   const n = session.total_rounds;

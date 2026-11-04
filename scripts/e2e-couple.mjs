@@ -151,6 +151,76 @@ try {
   await A.getByRole("button", { name: "Back to modes" }).click();
   await A.getByRole("heading", { name: "Pick a mode" }).waitFor();
   ok(true, "back to the lobby");
+  await B.getByRole("button", { name: "Back to modes" }).click();
+
+  console.log("Stage 3: Questions deck");
+  await B.getByRole("button", { name: /^Questions/ }).click();
+  await A.getByText("Card 1 of 12").waitFor();
+  await B.getByText("Card 1 of 12").waitFor();
+  ok(true, "Questions deck starts on both screens (Fun first)");
+  const card = await B.locator("article").boundingBox();
+  await B.mouse.move(card.x + card.width / 2, card.y + card.height / 2);
+  await B.mouse.down();
+  await B.mouse.move(card.x - 120, card.y + card.height / 2, { steps: 12 });
+  await B.mouse.up();
+  await A.getByText("Card 2 of 12").waitFor();
+  ok(true, "swiping the card left draws the next card on both screens");
+  for (let c = 2; c <= 4; c++) {
+    await A.getByRole("button", { name: "Next card →" }).click();
+    await B.getByText(`Card ${c + 1} of 12`).waitFor();
+  }
+  ok((await A.getByText("Level up: Deep 💭").count()) === 1, "card 5 opens the Deep level");
+  for (let c = 5; c <= 11; c++) {
+    await (c % 2 ? A : B).getByRole("button", { name: "Next card →" }).click();
+    await A.getByText(`Card ${c + 1} of 12`).waitFor();
+  }
+  await A.getByRole("button", { name: "Finish 💞" }).click();
+  await A.getByRole("heading", { name: "12 cards together" }).waitFor();
+  await B.getByRole("heading", { name: "12 cards together" }).waitFor();
+  ok(true, "deck summary on both screens (no score)");
+  await A.getByRole("button", { name: "Back to modes" }).click();
+  await B.getByRole("button", { name: "Back to modes" }).click();
+
+  console.log("Stage 3: Challenges");
+  await A.getByRole("button", { name: /^Challenges/ }).click();
+  await A.getByText("Challenge 1 of 5").waitFor();
+  await B.getByText("Challenge 1 of 5").waitFor();
+  ok((await B.getByRole("button", { name: /Start timer/ }).count()) === 0, "only the performer (Rahul, round 1) gets Start timer");
+  await B.getByText(/Waiting for Rahul to start/).waitFor();
+  const play = async (perf, partner, outcome) => {
+    if (outcome === "skip") return perf.getByRole("button", { name: "Skip this one" }).click();
+    await perf.getByRole("button", { name: /Start timer/ }).click();
+    await partner.getByText(/is on it… cheer them on/).waitFor();
+    await perf.getByRole("button", { name: "Done ✅" }).click();
+    await partner.getByText(/really do it\?/).waitFor();
+    await partner.getByRole("button", { name: outcome === "yes" ? "Yes, done! 👏" : "Not quite 🙈" }).click();
+  };
+  await play(A, B, "yes");
+  await A.getByText("Challenge complete! +15 points 🎉").waitFor();
+  await B.getByText("Challenge complete! +15 points 🎉").waitFor();
+  ok((await A.getByText("+15 pts").count()) === 1, "timer → Done → partner confirms → +15 points on both screens");
+  if (process.env.SHOTS) await B.screenshot({ path: `${process.env.SHOTS}/challenge-done.png` });
+  await B.getByRole("button", { name: "Next challenge →" }).click();
+  await A.getByText("Challenge 2 of 5").waitFor();
+  await play(B, A, "skip");
+  await A.getByText("Skipped. No worries!").waitFor();
+  ok(true, "turns alternate: round 2 is Durgesh's; Skip works");
+  await A.getByRole("button", { name: "Next challenge →" }).click();
+  await B.getByText("Challenge 3 of 5").waitFor();
+  await play(A, B, "no");
+  await A.getByText(/Not quite this time/).waitFor();
+  ok(true, "partner can say 'Not quite' (no points)");
+  await A.getByRole("button", { name: "Next challenge →" }).click();
+  await B.getByText("Challenge 4 of 5").waitFor();
+  await play(B, A, "yes");
+  await B.getByRole("button", { name: "Next challenge →" }).click();
+  await A.getByText("Challenge 5 of 5").waitFor();
+  await play(A, B, "yes");
+  await A.getByRole("button", { name: "See results 💞" }).click();
+  await A.getByRole("heading", { name: "+45 points" }).waitFor();
+  await B.getByRole("heading", { name: "+45 points" }).waitFor();
+  ok((await A.getByLabel("Challenge streak 2").count()) === 1, "summary: 45 points, 🔥 streak 2 (calculated on the server)");
+  if (process.env.SHOTS) await A.screenshot({ path: `${process.env.SHOTS}/challenge-summary.png` });
 } catch (e) {
   failures++;
   console.log("  ✗ FAIL", e.message.split("\n")[0]);

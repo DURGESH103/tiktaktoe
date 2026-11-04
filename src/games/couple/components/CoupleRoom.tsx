@@ -30,9 +30,12 @@ import { COUPLE_MODES } from "../modes";
 import type { CoupleMode } from "../types";
 import { CategoryPicker } from "./CategoryPicker";
 import { CompatRound } from "./CompatRound";
+import { ChallengeRound } from "./ChallengeRound";
 import { CompatSummary } from "./CompatSummary";
 import { CoupleChat } from "./CoupleChat";
 import { LangToggle } from "./LangToggle";
+import { QuestionsDeck } from "./QuestionsDeck";
+import { SessionSummary } from "./SessionSummary";
 
 /** /couple/[code]: the Couple Challenge room (lobby → mode → summary). */
 export function CoupleRoom({ code }: { code: string }) {
@@ -94,10 +97,21 @@ export function CoupleRoom({ code }: { code: string }) {
   const s = game.session;
   const cur = game.current;
   const partnerAnswered = !!cur && (mySeat === "X" ? cur.o_answered : cur.x_answered);
-  const flags = useRef({ round: "", partner: false, revealed: false, status: "" });
+  const flags = useRef({ round: "", partner: false, revealed: false, status: "", outcome: "" });
   useEffect(() => {
     const f = flags.current;
-    if (cur && cur.id !== f.round) Object.assign(f, { round: cur.id, partner: partnerAnswered, revealed: !!cur.revealed_at });
+    if (cur && cur.id !== f.round) Object.assign(f, { round: cur.id, partner: partnerAnswered, revealed: !!cur.revealed_at, outcome: cur.outcome ?? "" });
+    // Challenges: the partner is asked to confirm; a completed challenge is celebrated.
+    if (cur && (cur.outcome ?? "") !== f.outcome) {
+      f.outcome = cur.outcome ?? "";
+      if (cur.outcome === "claimed") {
+        feedback("message", "message");
+        setAnnouncement("Challenge done. Waiting for confirmation.");
+      } else if (cur.outcome === "completed") {
+        feedback("win", "win");
+        setAnnouncement("Challenge complete! Plus 15 points.");
+      }
+    }
     if (cur && partnerAnswered && !f.partner) {
       f.partner = true;
       feedback("message", "message");
@@ -110,7 +124,7 @@ export function CoupleRoom({ code }: { code: string }) {
     }
     if (s && s.status === "finished" && f.status === "active") {
       feedback("win", "win");
-      setAnnouncement(`Finished: ${s.compat_pct}% compatible, ${s.result ? TITLES[s.result.title].label : ""}.`);
+      setAnnouncement(s.mode === "compatibility" && s.result && "title" in s.result ? `Finished: ${s.compat_pct}% compatible, ${TITLES[s.result.title].label}.` : "Session finished.");
     }
     f.status = s?.status ?? "";
   }, [cur, partnerAnswered, s, feedback, partnerName]);
@@ -136,6 +150,12 @@ export function CoupleRoom({ code }: { code: string }) {
 
   async function startCompat(category: string) {
     if (await game.start("compatibility", category)) setPicker(null);
+  }
+
+  /** Lobby card tap: Compatibility asks for a category first; the deck and challenges start straight away. */
+  async function startMode(mode: CoupleMode) {
+    if (mode === "compatibility") setPicker("compatibility");
+    else await game.start(mode, null);
   }
 
   const shell = (children: React.ReactNode) => (
@@ -206,27 +226,49 @@ export function CoupleRoom({ code }: { code: string }) {
 
   const abandoned = r.room.status === "abandoned";
   const active = s?.status === "active" && !abandoned;
-  const showSummary = s?.status === "finished" && s.mode === "compatibility" && dismissed !== s.id;
+  const showSummary = s?.status === "finished" && dismissed !== s.id;
   const question = cur ? game.questions[cur.question_id] : undefined;
+  const endLabel = s?.mode === "compatibility" ? "End test" : s?.mode === "questions" ? "End deck" : "End challenges";
 
   let body: React.ReactNode;
   if (active && s && cur && question) {
     body = (
       <>
-        <CompatRound
-          session={s}
-          round={cur}
-          question={question}
-          me={me}
-          partner={partner}
-          mySeat={mySeat}
-          mine={game.answerOf(cur.id, r.me)}
-          theirs={game.answerOf(cur.id, r.opponentId)}
-          lang={lang}
-          busy={game.busy}
-          onSubmit={(self, guess) => game.submit(cur.id, self, guess)}
-          onNext={() => void game.next()}
-        />
+        {s.mode === "compatibility" && (
+          <CompatRound
+            session={s}
+            round={cur}
+            question={question}
+            me={me}
+            partner={partner}
+            mySeat={mySeat}
+            mine={game.answerOf(cur.id, r.me)}
+            theirs={game.answerOf(cur.id, r.opponentId)}
+            lang={lang}
+            busy={game.busy}
+            onSubmit={(self, guess) => game.submit(cur.id, self, guess)}
+            onNext={() => void game.next()}
+          />
+        )}
+        {s.mode === "questions" && (
+          <QuestionsDeck session={s} round={cur} question={question} playerX={playerX} playerO={playerO} me={r.me} lang={lang} busy={game.busy} onNext={() => void game.nextCard()} />
+        )}
+        {s.mode === "challenges" && (
+          <ChallengeRound
+            session={s}
+            round={cur}
+            question={question}
+            playerX={playerX}
+            playerO={playerO}
+            me={r.me}
+            lang={lang}
+            busy={game.busy}
+            onStartTimer={() => void game.startTimer(cur.id)}
+            onComplete={(done) => void game.completeChallenge(cur.id, done)}
+            onConfirm={(ok) => void game.confirmChallenge(cur.id, ok)}
+            onNext={() => void game.nextCard()}
+          />
+        )}
         {game.error && (
           <p role="alert" className="text-center text-sm text-danger">
             {ERROR_COPY[game.error]?.body ?? "Something went wrong."}
@@ -237,13 +279,13 @@ export function CoupleRoom({ code }: { code: string }) {
           onClick={() => (confirmQuit ? void game.quit() : setConfirmQuit(true))}
           className="mx-auto"
         >
-          {confirmQuit ? "Tap again to end the test" : "End test"}
+          {confirmQuit ? "Tap again to end" : endLabel}
         </Button>
       </>
     );
   } else if (active) {
     body = <RoomSkeleton />;
-  } else if (showSummary && s) {
+  } else if (showSummary && s && s.mode === "compatibility") {
     body = (
       <CompatSummary
         session={s}
@@ -253,6 +295,17 @@ export function CoupleRoom({ code }: { code: string }) {
         onPlayAgain={() => {
           setDismissed(s.id);
           setPicker("compatibility");
+        }}
+        onBack={() => setDismissed(s.id)}
+      />
+    );
+  } else if (showSummary && s) {
+    body = (
+      <SessionSummary
+        session={s}
+        onPlayAgain={() => {
+          setDismissed(s.id);
+          void startMode(s.mode);
         }}
         onBack={() => setDismissed(s.id)}
       />
@@ -271,7 +324,7 @@ export function CoupleRoom({ code }: { code: string }) {
               <button
                 type="button"
                 disabled={!m.ready}
-                onClick={() => setPicker(m.id)}
+                onClick={() => void startMode(m.id)}
                 aria-describedby={`mode-${m.id}`}
                 className={clsx(
                   "glass relative flex h-full min-h-36 w-full flex-col items-start gap-2 rounded-3xl p-4 text-left transition",
@@ -294,7 +347,7 @@ export function CoupleRoom({ code }: { code: string }) {
             </motion.div>
           ))}
         </div>
-        {s?.status === "abandoned" && <p className="text-center text-sm text-muted">The last test was ended early.</p>}
+        {s?.status === "abandoned" && <p className="text-center text-sm text-muted">The last session was ended early.</p>}
       </section>
     );
   }
