@@ -143,7 +143,7 @@ try {
   await A.getByLabel("55 percent compatible").waitFor();
   await B.getByLabel("55 percent compatible").waitFor();
   ok(true, "summary on both screens: 55% (calculated on the server)");
-  ok((await A.getByText("Perfect Chaos 😂").count()) === 1, "title: Perfect Chaos 😂");
+  ok((await A.getByRole("heading", { name: "Perfect Chaos 😂" }).count()) === 1, "title: Perfect Chaos 😂");
   ok((await A.getByText("Durgesh knows Rahul better 👀").count()) === 1, "who knows who better: Durgesh");
   ok((await B.getByRole("radio", { name: "Hinglish" }).getAttribute("aria-checked")) === "true", "language choice is per player and survives refresh");
   if (process.env.SHOTS) await A.screenshot({ path: `${process.env.SHOTS}/couple-summary.png` });
