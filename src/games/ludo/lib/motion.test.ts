@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { HOME, YARD } from "../engine";
 import { tokenPoint } from "./board";
-import { HOP_S, landingTime, planMotion } from "./motion";
+import { HOP_S, KNOCK_S, landingTime, planEnd, planMotion } from "./motion";
 
 const colors = ["red", "yellow"] as const;
 
 describe("planMotion", () => {
   it("hops square by square, one keyframe per square", () => {
     const plan = planMotion({ red: [3, -1, -1, -1] }, { red: [7, -1, -1, -1] }, ["red"]);
-    expect(plan["red-0"]).toEqual({ kind: "hop", path: [3, 4, 5, 6, 7].map((p) => tokenPoint("red", p, 0)), delay: 0, toHome: false });
+    expect(plan["red-0"]).toEqual({ kind: "hop", path: [3, 4, 5, 6, 7].map((p) => tokenPoint("red", p, 0)), delay: 0, toHome: false, fromYard: false });
     expect(Object.keys(plan)).toEqual(["red-0"]);
   });
 
   it("leaving the yard hops from the yard spot onto the start square", () => {
     const plan = planMotion({ red: [YARD, -1, -1, -1] }, { red: [0, -1, -1, -1] }, ["red"]);
-    expect(plan["red-0"]).toMatchObject({ kind: "hop", path: [tokenPoint("red", YARD, 0), tokenPoint("red", 0, 0)] });
+    expect(plan["red-0"]).toMatchObject({ kind: "hop", path: [tokenPoint("red", YARD, 0), tokenPoint("red", 0, 0)], fromYard: true });
   });
 
   it("a capture knocks the victim home only after the capturer lands", () => {
@@ -23,6 +23,8 @@ describe("planMotion", () => {
     expect(plan["red-0"]).toMatchObject({ kind: "hop", delay: 0.6 });
     expect(plan["yellow-0"]).toEqual({ kind: "knock", from: tokenPoint("yellow", 36, 0), to: tokenPoint("yellow", YARD, 0), delay: 0.6 + 5 * HOP_S });
     expect(landingTime(plan)).toEqual({ hop: 0.6 + 5 * HOP_S, knock: 0.6 + 5 * HOP_S });
+    // The next update waits until the captured token is back in its yard.
+    expect(planEnd(plan)).toBeCloseTo(0.6 + 5 * HOP_S + KNOCK_S);
   });
 
   it("flags a token reaching home", () => {

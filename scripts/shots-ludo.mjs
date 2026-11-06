@@ -34,10 +34,12 @@ const theme = (p, dark) =>
     localStorage.setItem("theme", d ? "dark" : "light");
   }, dark);
 
-// A position with a bit of everything: yards, a stack of 3, a token home, home-column tokens.
+// A 3-player game (red = you, green, yellow; blue's seat empty) with a bit of everything: yellow has
+// all four tokens out (one on the top row), red, green and yellow share the safe square 9 (a mixed
+// stack), red has two tokens on one square, and red and green have finished tokens in the centre.
 const POSITION = {
-  colors: ["red", "green", "yellow", "blue"],
-  tokens: { red: [-1, -1, 5, 20], green: [-1, 8, 8, 8], yellow: [56, 53, -1, 30], blue: [-1, -1, -1, 12] },
+  colors: ["red", "green", "yellow"],
+  tokens: { red: [8, 21, 21, 56], green: [56, 56, 47, -1], yellow: [38, 34, 3, 20] },
   turn: "red",
   phase: "roll",
   dice: null,
@@ -48,14 +50,14 @@ const POSITION = {
 };
 
 try {
-  const [A, B, C, D] = [await newPlayer("Rahul"), await newPlayer("Durgesh"), await newPlayer("Priya"), await newPlayer("Kabir")];
+  const [A, B, C] = [await newPlayer("Durgesh"), await newPlayer("kittu"), await newPlayer("Rahul")];
   await A.getByRole("radio", { name: /Ludo/ }).click();
   await A.getByRole("button", { name: "Create Ludo table" }).click();
   await A.waitForURL(/\/ludo\/[A-Z0-9]{5}$/);
   const code = A.url().split("/").pop();
   codes.add(code);
-  await A.getByRole("radio", { name: "4" }).click();
-  for (const p of [B, C, D]) {
+  await A.getByRole("radio", { name: "3" }).click();
+  for (const p of [B, C]) {
     await p.goto(`${BASE}/ludo/${code}`);
     await p.getByRole("button", { name: "I'm ready" }).click();
   }
@@ -71,7 +73,7 @@ try {
     await A.waitForTimeout(2000);
   };
   // Roll phase (red to roll), then move phase (red rolled a 6: several tokens can move).
-  await set({ state: POSITION, last_roll: 4, last_events: [{ type: "roll", color: "blue", dice: 4 }, { type: "no_moves", color: "blue" }] });
+  await set({ state: POSITION, last_roll: 4, last_events: [{ type: "roll", color: "yellow", dice: 4 }, { type: "no_moves", color: "yellow" }] });
   for (const dark of [false, true]) {
     await theme(A, dark);
     await A.waitForTimeout(400);
@@ -83,13 +85,83 @@ try {
     await A.waitForTimeout(400);
     await A.screenshot({ path: `${OUT}/${LABEL}-move-${dark ? "dark" : "light"}.png` });
   }
-  // Smallest supported phone: does it all fit without scrolling?
+  // Common phone sizes: does it all fit without scrolling?
   await theme(A, false);
-  await A.setViewportSize({ width: 375, height: 667 });
-  await A.waitForTimeout(600);
-  await A.screenshot({ path: `${OUT}/${LABEL}-375x667.png` });
-  const scroll = await A.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
-  console.log(`375×667: page is ${scroll > 0 ? `${scroll}px taller than the screen` : "fully on screen"}`);
+  for (const [w, h] of [[360, 740], [375, 667], [390, 844], [412, 915]]) {
+    await A.setViewportSize({ width: w, height: h });
+    await A.waitForTimeout(600);
+    await A.screenshot({ path: `${OUT}/${LABEL}-${w}x${h}.png` });
+    const scroll = await A.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+    console.log(`${w}×${h}: ${scroll > 0 ? `page is ${scroll}px taller than the screen` : "fully on screen"}`);
+  }
+
+  if (process.env.MOTION) {
+    // Smoothness: a real token move (red 8 → 14, six hops) and a real dice roll (scripted 3), first
+    // at 4× CPU slowdown while counting animation frames, then again recorded as a GIF.
+    await A.setViewportSize({ width: 390, height: 844 });
+    const cdp = await A.context().newCDPSession(A);
+    const frameGaps = (ms) =>
+      A.evaluate(
+        (ms) =>
+          new Promise((done) => {
+            const gaps = [];
+            let last = performance.now();
+            const end = last + ms;
+            const tick = (t) => {
+              gaps.push(t - last);
+              last = t;
+              if (t < end) requestAnimationFrame(tick);
+              else done(gaps);
+            };
+            requestAnimationFrame(tick);
+          }),
+        ms,
+      );
+    const report = (what, gaps) => {
+      const dropped = gaps.filter((g) => g > 25).length;
+      console.log(`${what}: ${gaps.length} frames, ${dropped} dropped (gap > 25 ms), worst gap ${Math.round(Math.max(...gaps))} ms`);
+    };
+    const moveTurn = () => set({ state: { ...POSITION, phase: "move", dice: 6, sixes: 1 }, last_roll: 6, last_events: [{ type: "roll", color: "red", dice: 6 }] });
+    const rollTurn = async () => {
+      await set({ state: POSITION, last_roll: 4, last_events: [] });
+      await admin.from("ludo_test_dice").insert({ room_id: room.id, value: 3 });
+    };
+    const doMove = () => A.locator('[data-token="red-0"][data-movable]').dispatchEvent("click");
+    const doRoll = () => A.getByRole("button", { name: "Roll the dice" }).click();
+
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+    await moveTurn();
+    report("idle (only the turn glow and bouncing tokens), 4× CPU slowdown", await frameGaps(1500));
+    let gaps = frameGaps(2200);
+    await doMove();
+    report("token move, 4× CPU slowdown", await gaps);
+    await rollTurn();
+    gaps = frameGaps(2200);
+    await doRoll();
+    report("dice roll, 4× CPU slowdown", await gaps);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+
+    // GIF: screencast frames (with their timestamps) joined into an animation.
+    const frames = [];
+    cdp.on("Page.screencastFrame", (f) => {
+      frames.push({ data: Buffer.from(f.data, "base64"), t: f.metadata.timestamp });
+      cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
+    });
+    await rollTurn();
+    await cdp.send("Page.startScreencast", { format: "jpeg", quality: 80, maxWidth: 360, maxHeight: 780 });
+    await A.waitForTimeout(300);
+    await doRoll();
+    await A.waitForTimeout(1800);
+    await moveTurn();
+    await doMove();
+    await A.waitForTimeout(1800);
+    await cdp.send("Page.stopScreencast");
+    const { default: sharp } = await import("sharp");
+    const imgs = await Promise.all(frames.map((f) => sharp(f.data).resize(360, 780, { fit: "contain", background: "#ffffff" }).png().toBuffer()));
+    const delay = frames.map((f, i) => Math.max(20, Math.round(((frames[i + 1]?.t ?? f.t + 0.05) - f.t) * 1000)));
+    await sharp(imgs, { join: { animated: true } }).gif({ delay, loop: 0 }).toFile(`${OUT}/${LABEL}-motion.gif`);
+    console.log(`GIF: ${frames.length} frames → ${OUT}/${LABEL}-motion.gif`);
+  }
   console.log(`saved to ${OUT}`);
 } catch (e) {
   console.log("FAILED:", e.message.split("\n")[0]);

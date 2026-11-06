@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Reaction } from "@/hooks/useGameRoom";
 import { REACTIONS, SEND_COOLDOWN_MS, type ReactionEmoji } from "@/lib/reactions";
 
@@ -21,8 +21,20 @@ export function ReactionGlyph({ emoji, className }: { emoji: ReactionEmoji; clas
  * Row of reaction buttons (48px each, scrolls sideways on narrow phones).
  * Cools down for a second after each send so nobody can spam.
  */
-export function ReactionBar({ onReact }: { onReact: (e: ReactionEmoji) => void }) {
+export function ReactionBar({
+  onReact,
+  scrollHint = false,
+}: {
+  onReact: (e: ReactionEmoji) => void;
+  /**
+   * Compact (36px buttons, so all eight fit on most phones). When they don't all fit, the right edge
+   * fades with a "›" until you've scrolled to the end, so it's clear there are more.
+   */
+  scrollHint?: boolean;
+}) {
   const [cooling, setCooling] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
 
   useEffect(() => {
     if (!cooling) return;
@@ -30,12 +42,30 @@ export function ReactionBar({ onReact }: { onReact: (e: ReactionEmoji) => void }
     return () => clearTimeout(t);
   }, [cooling]);
 
+  const checkMore = useCallback(() => {
+    const el = rowRef.current;
+    if (el) setMore(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+  useEffect(() => {
+    if (!scrollHint || !rowRef.current) return;
+    checkMore();
+    const ro = new ResizeObserver(checkMore);
+    ro.observe(rowRef.current);
+    return () => ro.disconnect();
+  }, [scrollHint, checkMore]);
+
   return (
-    <div className="glass mx-auto w-full max-w-[min(92vw,26rem)] overflow-hidden rounded-full">
+    <div className="glass relative mx-auto w-full max-w-[min(92vw,26rem)] overflow-hidden rounded-full">
       <div
+        ref={rowRef}
         role="group"
         aria-label="Send a reaction"
-        className="flex snap-x gap-0.5 overflow-x-auto overscroll-x-contain p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        onScroll={scrollHint ? checkMore : undefined}
+        className={clsx(
+          "flex snap-x overflow-x-auto overscroll-x-contain p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          scrollHint ? "gap-0" : "gap-0.5",
+          scrollHint && more && "[mask-image:linear-gradient(to_right,#000_calc(100%-3.5rem),transparent)]",
+        )}
       >
         {REACTIONS.map(({ emoji, label }) => (
           <motion.button
@@ -50,7 +80,8 @@ export function ReactionBar({ onReact }: { onReact: (e: ReactionEmoji) => void }
             }}
             whileTap={cooling ? undefined : { scale: 1.3 }}
             className={clsx(
-              "grid h-12 w-12 shrink-0 snap-start place-items-center rounded-full text-2xl transition-[opacity,background-color]",
+              "grid shrink-0 snap-start place-items-center rounded-full transition-[opacity,background-color]",
+              scrollHint ? "h-9 w-9 text-xl" : "h-12 w-12 text-2xl",
               cooling ? "opacity-40" : "hover:bg-fg/[0.08]",
             )}
           >
@@ -58,6 +89,11 @@ export function ReactionBar({ onReact }: { onReact: (e: ReactionEmoji) => void }
           </motion.button>
         ))}
       </div>
+      {scrollHint && more && (
+        <span aria-hidden className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-lg font-bold text-fg/50">
+          ›
+        </span>
+      )}
     </div>
   );
 }

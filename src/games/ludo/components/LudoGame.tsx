@@ -98,9 +98,9 @@ export function LudoGame({
       ) : left ? (
         "Left"
       ) : away.has(c) && !s.finished ? (
-        <span className="font-semibold text-warn">Away · auto-play</span>
+        <span className="rounded-full bg-amber-500/15 px-1.5 font-semibold text-amber-700 dark:bg-amber-400/20 dark:text-amber-200">Away · auto-play</span>
       ) : off !== null ? (
-        <span className="font-semibold text-warn">{off >= 30 ? "Disconnected" : "Offline…"}</span>
+        <span className="rounded-full bg-amber-500/15 px-1.5 font-semibold text-amber-700 dark:bg-amber-400/20 dark:text-amber-200">{off >= 30 ? "Disconnected" : "Offline…"}</span>
       ) : noMoves === c ? (
         <span className="font-semibold">No moves</span>
       ) : on && s.sixes > 0 ? (
@@ -119,17 +119,26 @@ export function LudoGame({
         key={c}
         data-panel={c}
         className={clsx(
-          "glass flex min-w-0 items-center gap-2 rounded-2xl p-1.5 transition-shadow",
+          "glass flex min-w-0 items-center gap-1.5 rounded-2xl px-1.5 py-1 transition-shadow",
           side === "right" && "flex-row-reverse text-right",
           left && "opacity-50",
         )}
         style={on ? { boxShadow: `0 0 0 2px ${COLOR_HEX[c]}, 0 0 18px ${COLOR_HEX[c]}66` } : undefined}
         aria-current={on ? "true" : undefined}
       >
+        {/* Player colour = ring around the avatar; the small dot is online status (green online, grey away/offline). */}
         <span className="relative ml-0.5 shrink-0">
           {on && deadline !== null && <CountdownRing deadline={deadline} color={COLOR_HEX[c]} short={away.has(c)} />}
-          <AvatarBadge avatar={p?.avatar ?? "❔"} color={p?.color ?? "slate"} size="sm" />
-          <span aria-hidden className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full ring-2 ring-bg" style={{ background: COLOR_HEX[c] }} />
+          <span className="block rounded-full" style={{ boxShadow: `0 0 0 2.5px ${COLOR_HEX[c]}` }}>
+            <AvatarBadge avatar={p?.avatar ?? "❔"} color={p?.color ?? "slate"} size="sm" />
+          </span>
+          {!left && (
+            <span
+              role="img"
+              aria-label={away.has(c) || off !== null ? "Away" : "Online"}
+              className={clsx("absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-bg", away.has(c) || off !== null ? "bg-slate-400" : "bg-emerald-500")}
+            />
+          )}
         </span>
         <span className="min-w-0 flex-1 leading-tight">
           <span className="block truncate text-[13px] font-semibold">{nameOf(c)}</span>
@@ -144,7 +153,7 @@ export function LudoGame({
           canRoll={mine && canRoll}
           onRoll={mine ? onRoll : undefined}
           active={on}
-          size={mine ? 40 : 34}
+          size={mine ? 34 : 30}
           label={`${nameOf(c)}'s dice`}
           color={COLOR_HEX[c]}
           owner={c}
@@ -153,20 +162,47 @@ export function LudoGame({
       </div>
     );
   };
-  const row = (colors: Color[], label: string) =>
-    colors.some((c) => s.colors.includes(c)) && (
-      <div className="grid grid-cols-2 gap-2" role="group" aria-label={label}>
-        {colors.map((c, i) => (s.colors.includes(c) ? panel(c, i === 0 ? "left" : "right") : <div key={c} />))}
-      </div>
-    );
+  // Always two rows (an empty seat keeps its space as a faint placeholder), so the board stays centred.
+  const row = (colors: Color[], label: string) => (
+    <div className="grid grid-cols-2 gap-1.5" role="group" aria-label={label}>
+      {colors.map((c, i) =>
+        s.colors.includes(c) ? (
+          panel(c, i === 0 ? "left" : "right")
+        ) : (
+          <div key={c} className="grid min-h-[2.75rem] place-items-center text-xs text-fg/25">Empty seat</div>
+        ),
+      )}
+    </div>
+  );
+  const pill = toast?.text ?? (s.finished ? "Game over" : myTurn ? (s.phase === "roll" ? "Your turn — tap your dice!" : "Tap a glowing token") : `${nameOf(s.turn)}'s turn`);
   // Chat open on a phone: only your panel and the current player's, under the board.
   const compactRow = [...new Set([myColor, s.finished ? null : s.turn].filter((c): c is Color => !!c))];
 
   return (
-    <div className="-mx-2 flex flex-col gap-2">
+    <div className="-mx-2 flex flex-col gap-1.5">
       {!compact && row(TOP_ROW, "Top players")}
 
-      <div className="relative mx-auto w-full" style={{ maxWidth: compact ? Math.max(180, compactHeight - 80) : "max(240px, calc(100dvh - 290px))" }}>
+      {/* Turn label (briefly "Roll again!", "No moves", … when they happen). */}
+      <div className="flex h-6 justify-center" aria-hidden>
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.span
+            key={pill}
+            initial={{ opacity: 0, y: 6, scale: 0.9 }}
+            animate={myTurn && !toast ? { opacity: 1, y: 0, scale: [1, 1.06, 1] } : { opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={myTurn && !toast ? { scale: { duration: 1.2, repeat: Infinity }, default: { duration: 0.2 } } : { duration: 0.2 }}
+            className={clsx(
+              "rounded-full px-3 py-0.5 text-[13px] font-semibold shadow-sm",
+              toast ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-white",
+            )}
+            style={toast ? undefined : { background: COLOR_HEX[s.turn], color: s.turn === "yellow" ? "#1f2937" : "#fff" }}
+          >
+            {pill}
+          </motion.span>
+        </AnimatePresence>
+      </div>
+
+      <div className="relative mx-auto w-full" style={{ maxWidth: compact ? Math.max(180, compactHeight - 80) : "max(240px, calc(100dvh - 300px))" }}>
         <LudoBoard
           key={game.id}
           state={s}
@@ -177,21 +213,6 @@ export function LudoGame({
           names={names}
           delay={moveDelay}
         />
-        <AnimatePresence>
-          {toast && (
-            <motion.p
-              key={toast.id}
-              role="status"
-              initial={{ opacity: 0, scale: 0.6, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: -10 }}
-              transition={{ type: "spring", stiffness: 420, damping: 22 }}
-              className="pointer-events-none absolute left-1/2 top-[38%] z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-gray-900/90 px-4 py-2 font-display text-lg font-bold text-white shadow-xl"
-            >
-              {toast.text}
-            </motion.p>
-          )}
-        </AnimatePresence>
         {iAmAway && !s.finished && (
           <div role="alert" className="absolute inset-x-2 top-2 z-10 flex items-center gap-3 rounded-2xl border border-warn/40 bg-bg/95 p-2.5 shadow-lg">
             <p className="min-w-0 flex-1 text-sm">You missed 3 turns, so your turns are being played automatically.</p>
@@ -303,6 +324,7 @@ function useGameEffects(game: LudoGameRow, myColor: Color | null, moveDelay: num
       if (e.type === "three_sixes") show(landedDice, "Three 6s — turn lost");
       if (e.type === "no_moves") {
         later(landedDice, () => setNoMoves(e.color));
+        show(landedDice, e.color === myColor ? "No moves" : `${nameRef.current(e.color)}: no moves`);
         later(landedDice + 1.6, () => setNoMoves((c) => (c === e.color ? null : c)));
       }
       if (e.type !== "move") continue;

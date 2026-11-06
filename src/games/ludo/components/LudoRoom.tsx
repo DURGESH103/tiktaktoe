@@ -102,6 +102,7 @@ export function LudoRoom({ code }: { code: string }) {
   const shell = (children: React.ReactNode, playing = false) => (
     <div className="min-h-dvh">
       <AppHeader
+        slim={playing}
         left={
           <div className="flex items-center gap-2">
             {playing ? (
@@ -141,11 +142,11 @@ export function LudoRoom({ code }: { code: string }) {
         style={aboveSheet != null ? { height: aboveSheet } : undefined}
         className={clsx(
           "safe-x mx-auto flex w-full max-w-md flex-col",
-          playing ? "gap-2" : "gap-4",
+          playing ? "gap-1.5" : "gap-4",
           aboveSheet != null
             ? "fixed inset-x-0 top-0 z-30 overflow-y-auto overscroll-contain bg-bg pb-3 pt-[calc(env(safe-area-inset-top)+0.5rem)]"
             : playing
-              ? "min-h-[calc(100dvh-4.25rem-env(safe-area-inset-top))] pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-1"
+              ? "min-h-[calc(100dvh-3.75rem-env(safe-area-inset-top))] justify-center pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-0"
               : "pb-[calc(env(safe-area-inset-bottom)+5.5rem)] pt-2",
         )}
       >
@@ -211,8 +212,8 @@ export function LudoRoom({ code }: { code: string }) {
         </div>
         {/* Reactions, with the chat button floating just to their right. */}
         {aboveSheet == null && (
-          <div className="mt-auto pr-[4.25rem]">
-            <ReactionBar onReact={r.react} />
+          <div className="-ml-2 pr-[3.75rem]">
+            <ReactionBar onReact={r.react} scrollHint />
           </div>
         )}
       </>,

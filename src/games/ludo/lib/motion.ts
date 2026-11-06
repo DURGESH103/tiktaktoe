@@ -2,13 +2,13 @@ import { HOME, YARD, type Color } from "../engine";
 import { tokenPoint, type Pt } from "./board";
 
 /** Seconds per square when a token hops along the track. */
-export const HOP_S = 0.12;
+export const HOP_S = 0.15;
 /** Seconds a captured token takes to fly back to its yard. */
-export const KNOCK_S = 0.45;
+export const KNOCK_S = 0.4;
 
 export type TokenMotion =
   /** Hops square by square: `path` = every square from where it was to where it lands. */
-  | { kind: "hop"; path: Pt[]; delay: number; toHome: boolean }
+  | { kind: "hop"; path: Pt[]; delay: number; toHome: boolean; fromYard: boolean }
   /** Knocked back to the yard once the capturing token has landed (`delay`). */
   | { kind: "knock"; from: Pt; to: Pt; delay: number };
 
@@ -33,7 +33,7 @@ export function planMotion(prev: Tokens, next: Tokens, colors: readonly Color[],
         knocked.push({ key, from: tokenPoint(c, a, i), to: tokenPoint(c, YARD, i) });
       } else if (b > a) {
         const squares = a === YARD ? [YARD, 0] : Array.from({ length: b - a + 1 }, (_, k) => a + k);
-        out[key] = { kind: "hop", path: squares.map((p) => tokenPoint(c, p, i)), delay, toHome: b === HOME };
+        out[key] = { kind: "hop", path: squares.map((p) => tokenPoint(c, p, i)), delay, toHome: b === HOME, fromYard: a === YARD };
         landed = Math.max(landed, delay + (squares.length - 1) * HOP_S);
       }
     });
@@ -52,4 +52,11 @@ export function landingTime(plan: Record<string, TokenMotion>): { hop: number; k
     else knock = Math.max(knock ?? 0, m.delay);
   }
   return { hop, knock };
+}
+
+/** When every motion in a plan has finished (s): the next update waits until then, so nothing skips. */
+export function planEnd(plan: Record<string, TokenMotion>): number {
+  let end = 0;
+  for (const m of Object.values(plan)) end = Math.max(end, m.kind === "hop" ? m.delay + (m.path.length - 1) * HOP_S : m.delay + KNOCK_S);
+  return end;
 }

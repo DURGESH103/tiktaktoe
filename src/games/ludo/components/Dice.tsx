@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { animate, motion, useMotionValue, useReducedMotion, type AnimationPlaybackControls } from "framer-motion";
+import { animate, motion, useMotionValue, useReducedMotion, useTransform, type AnimationPlaybackControls } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 
 const PIPS: Record<number, [number, number][]> = {
@@ -22,7 +22,7 @@ const FACES: Record<number, { place: (half: number) => string; show: { x: number
   2: { place: (h) => `rotateX(90deg) translateZ(${h}px)`, show: { x: -90, y: 0 } },
   5: { place: (h) => `rotateX(-90deg) translateZ(${h}px)`, show: { x: 90, y: 0 } },
 };
-export const ROLL_MS = 600;
+export const ROLL_MS = 700;
 
 /** Next resting rotation: always forward, with a couple of full turns on the way (a real tumble). */
 function tumbleTo(from: { x: number; y: number }, value: number) {
@@ -32,7 +32,7 @@ function tumbleTo(from: { x: number; y: number }, value: number) {
 }
 
 /**
- * A 3D die (CSS cube, white with rounded corners and black pips). It tumbles and shakes for ~600 ms
+ * A 3D die (CSS cube, white with rounded corners and black pips). It tumbles and shakes for ~700 ms
  * whenever a new roll arrives (`rollKey` changes), so every player sees the same roll. Your own roll
  * starts spinning the moment you tap (`rolling`) and lands on the server's value when it arrives.
  * Only your own die is a button; the others are pictures.
@@ -68,9 +68,14 @@ export function Dice({
 }) {
   const reduce = useReducedMotion();
   const [start] = useState(() => tumbleTo({ x: 0, y: 0 }, value ?? 1));
+  // All motion is transforms on motion values (no re-renders while it rolls).
   const rx = useMotionValue(start.x);
   const ry = useMotionValue(start.y);
+  const lift = useMotionValue(0); // px above the table (negative = up)
   const shake = useMotionValue(0);
+  // The shadow stays on the table: smaller and lighter while the die is in the air.
+  const shadowScale = useTransform(lift, [-16, 0], [0.55, 1]);
+  const shadowOpacity = useTransform(lift, [-16, 0], [0.15, 0.35]);
   const st = useRef({ key: rollKey, value, spinning: false, anims: [] as AnimationPlaybackControls[] });
 
   useEffect(() => {
@@ -80,31 +85,44 @@ export function Dice({
       s.anims = [];
     };
     if (rolling && !reduce) {
-      // Tap → spin at once (feels instant); the landing below takes over when the result arrives.
+      // Tap → it jumps up and spins at once (no waiting); the landing below takes over when the
+      // server's result arrives.
       if (!s.spinning) {
         stop();
         s.spinning = true;
         s.anims = [
-          animate(rx, rx.get() + 7200, { duration: 10, ease: "linear" }),
-          animate(ry, ry.get() + 5040, { duration: 10, ease: "linear" }),
-          animate(shake, [0, -3, 3, -2, 2, 0], { duration: 0.3, repeat: Infinity }),
+          animate(rx, rx.get() + 7200, { duration: 9, ease: "linear" }),
+          animate(ry, ry.get() + 5040, { duration: 9, ease: "linear" }),
+          animate(lift, -14, { duration: 0.15, ease: "easeOut" }),
+          animate(shake, [0, -2, 2, 0], { duration: 0.25, repeat: Infinity }),
         ];
       }
       return;
     }
     if (s.key !== rollKey || s.spinning) {
+      // A new roll: tumble (or finish my spin) and land on its face with a little bounce.
       const wasSpinning = s.spinning;
       stop();
       s.spinning = false;
       s.key = rollKey;
       s.value = value;
       const t = tumbleTo({ x: rx.get(), y: ry.get() }, value ?? 1);
-      const duration = reduce ? 0 : wasSpinning ? 0.45 : ROLL_MS / 1000;
-      const ease = [0.2, 0.7, 0.3, 1] as const;
+      if (reduce) {
+        rx.set(t.x);
+        ry.set(t.y);
+        lift.set(0);
+        shake.set(0);
+        return;
+      }
+      const duration = wasSpinning ? 0.5 : ROLL_MS / 1000;
+      const ease = [0.2, 0.75, 0.3, 1] as const;
       s.anims = [
         animate(rx, t.x, { duration, ease }),
         animate(ry, t.y, { duration, ease }),
-        animate(shake, reduce ? 0 : [0, -4, 4, -3, 3, -1, 0], { duration }),
+        wasSpinning
+          ? animate(lift, [lift.get(), -14, 0, -4, 0], { duration, times: [0, 0.5, 0.78, 0.9, 1], ease: "easeInOut" })
+          : animate(lift, [0, -16, -12, 0, -4, 0], { duration, times: [0, 0.25, 0.55, 0.78, 0.9, 1], ease: "easeInOut" }),
+        animate(shake, [shake.get(), -3, 3, -1, 0], { duration: duration * 0.6 }),
       ];
     } else if (value !== null && s.value !== value) {
       // Caught up without seeing the roll (e.g. after a reconnect): just show it.
@@ -114,37 +132,52 @@ export function Dice({
       rx.set(t.x);
       ry.set(t.y);
     }
-  }, [rolling, rollKey, value, reduce, rx, ry, shake]);
+  }, [rolling, rollKey, value, reduce, rx, ry, lift, shake]);
   useEffect(() => () => st.current.anims.forEach((a) => a.stop()), []);
 
+  // Your turn, not rolled yet: an idle "ready" die ("?" faces) with a gentle wiggle.
+  const ready = canRoll && !rolling;
   const half = size / 2;
   const cube = (
-    <motion.div style={{ x: shake, width: size, height: size, perspective: size * 5 }} className="relative">
+    <div className="relative" style={{ width: size, height: size + 6 }}>
+      <motion.span
+        aria-hidden
+        className="absolute bottom-0 left-[10%] h-[7px] w-[80%] rounded-[50%] bg-[radial-gradient(closest-side,#000,transparent)]"
+        style={{ scale: shadowScale, opacity: shadowOpacity }}
+      />
       <motion.div
-        data-testid="dice-cube"
-        data-color={owner}
-        data-value={value ?? ""}
-        style={{ rotateX: rx, rotateY: ry, width: size, height: size, transformStyle: "preserve-3d" }}
+        animate={ready && !reduce ? { rotate: [0, -7, 7, -4, 4, 0] } : { rotate: 0 }}
+        transition={ready ? { duration: 0.9, repeat: Infinity, repeatDelay: 1.1 } : { duration: 0.2 }}
+        style={{ x: shake, y: lift, width: size, height: size, perspective: size * 5 }}
         className="relative"
       >
-        {Object.entries(FACES).map(([v, f]) => (
-          <div
-            key={v}
-            className="absolute inset-0 grid place-items-center rounded-[22%] border border-slate-300 bg-gradient-to-br from-white to-slate-100 shadow-[inset_0_-3px_6px_rgba(0,0,0,0.12)] [backface-visibility:hidden]"
-            style={{ transform: f.place(half) }}
-          >
-            <Face value={value ? Number(v) : null} />
-          </div>
-        ))}
+        <motion.div
+          data-testid="dice-cube"
+          data-color={owner}
+          data-value={value ?? ""}
+          style={{ rotateX: rx, rotateY: ry, width: size, height: size, transformStyle: "preserve-3d" }}
+          className="relative"
+        >
+          {Object.entries(FACES).map(([v, f]) => (
+            <div
+              key={v}
+              className="absolute inset-0 grid place-items-center rounded-[22%] border border-slate-300 bg-gradient-to-br from-white to-slate-100 shadow-[inset_0_-3px_6px_rgba(0,0,0,0.12)] [backface-visibility:hidden]"
+              style={{ transform: f.place(half) }}
+            >
+              <Face value={ready ? null : value ? Number(v) : 0} />
+            </div>
+          ))}
+        </motion.div>
       </motion.div>
-    </motion.div>
+    </div>
   );
 
   const box = clsx(
     "relative grid shrink-0 place-items-center rounded-2xl transition-[opacity,filter,box-shadow]",
+    // Other players' dice (and yours when it isn't your turn) show the last roll faintly.
     active ? "opacity-100" : "opacity-40 grayscale",
   );
-  const boxStyle = { width: size + 12, height: size + 12, "--die-ring": color } as React.CSSProperties;
+  const boxStyle = { width: size + 8, height: size + 10, "--die-ring": color } as React.CSSProperties;
 
   if (!onRoll) {
     return (
@@ -168,13 +201,17 @@ export function Dice({
   );
 }
 
+/** A face: its pips; 0 = no roll yet (one faint pip); null = ready to roll ("?"). */
 function Face({ value }: { value: number | null }) {
   return (
     <svg viewBox="0 0 3 3" className="h-[78%] w-[78%]" aria-hidden>
-      {/* No roll yet: a plain face with one faint pip. */}
-      {(PIPS[value ?? 1] ?? []).map(([x, y], i) => (
-        <circle key={i} cx={x + 0.5} cy={y + 0.5} r={0.29} fill={value ? "#111827" : "#cbd5e1"} />
-      ))}
+      {value === null ? (
+        <text x={1.5} y={2.05} textAnchor="middle" fontSize={1.6} fontWeight={800} fill="#64748b">
+          ?
+        </text>
+      ) : (
+        (PIPS[value || 1] ?? []).map(([x, y], i) => <circle key={i} cx={x + 0.5} cy={y + 0.5} r={0.29} fill={value ? "#111827" : "#cbd5e1"} />)
+      )}
     </svg>
   );
 }

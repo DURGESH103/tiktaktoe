@@ -162,7 +162,7 @@ try {
 
   await A.getByRole("button", { name: "Start game" }).click();
   await A.getByText("Your turn — roll the dice!").waitFor();
-  await B.getByText("Rahul's turn").waitFor();
+  await B.getByText("Rahul's turn").first().waitFor();
   ok((await B.getByRole("button", { name: /Roll the dice|Last roll|Dice/ }).getAttribute("aria-disabled")) === "true", "both see the board; only the player whose turn it is can roll");
 
   const page = { red: A, yellow: B };
@@ -211,8 +211,9 @@ try {
       await B.getByText(/captured your token! 💥/).waitFor();
       await A.getByText(/captured Durgesh's token! 💥/).waitFor();
       ok(true, "capture: Rahul lands on Durgesh's token; both screens show it, the token goes back to the yard");
-      const knocked = await B.locator('[data-token^="yellow-"][data-motion="knock"]').count();
-      ok(knocked === 1, "capture knock-back: the captured token flies back to its yard");
+      // (The board shows each update once the previous animation has finished, so wait for it.)
+      await B.locator('[data-token^="yellow-"][data-motion="knock"]').first().waitFor({ state: "attached" });
+      ok((await B.locator('[data-token^="yellow-"][data-motion="knock"]').count()) === 1, "capture knock-back: the captured token slides back to its yard");
     }
   }
   ok(mismatch === 0, `server state matched the rules engine after every one of ${plan.steps.length} rolls`);
