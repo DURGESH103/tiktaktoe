@@ -25,7 +25,8 @@ import { reactionLabel } from "@/lib/reactions";
 import { useCoupleLang } from "../hooks/useCoupleLang";
 import { useCoupleRoom } from "../hooks/useCoupleRoom";
 import { useCoupleSession } from "../hooks/useCoupleSession";
-import { TITLES } from "../lib/compat";
+import { useMemories } from "../hooks/useMemories";
+import { questionText, TITLES } from "../lib/compat";
 import { COUPLE_MODES } from "../modes";
 import type { CoupleMode } from "../types";
 import { CategoryPicker } from "./CategoryPicker";
@@ -34,6 +35,9 @@ import { ChallengeRound } from "./ChallengeRound";
 import { CompatSummary } from "./CompatSummary";
 import { CoupleChat } from "./CoupleChat";
 import { LangToggle } from "./LangToggle";
+import { MemoriesRound } from "./MemoriesRound";
+import { MemoriesTimeline } from "./MemoriesTimeline";
+import { MemoryComposer, type ComposerDraft } from "./MemoryComposer";
 import { QuestionsDeck } from "./QuestionsDeck";
 import { SessionSummary } from "./SessionSummary";
 
@@ -56,6 +60,10 @@ export function CoupleRoom({ code }: { code: string }) {
   const [dismissed, setDismissed] = useState<string | null>(null);
   // Space above the chat sheet on phones (null = chat closed / desktop).
   const [aboveSheet, setAboveSheet] = useState<number | null>(null);
+  // Memories: the shared timeline sheet and the "save a memory" composer.
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [composer, setComposer] = useState<ComposerDraft | null>(null);
+  const mem = useMemories(r.room?.id ?? null, r.room?.player_x ?? null, r.room?.player_o ?? null, !!r.room?.player_o);
 
   const partner = r.opponentId ? r.players[r.opponentId] : undefined;
   const me = r.me ? r.players[r.me] : undefined;
@@ -110,6 +118,11 @@ export function CoupleRoom({ code }: { code: string }) {
       } else if (cur.outcome === "completed") {
         feedback("win", "win");
         setAnnouncement("Challenge complete! Plus 15 points.");
+      } else if (cur.outcome === "matched") {
+        feedback("win", "win");
+        setAnnouncement("You both remembered it the same way! Plus 20 points.");
+      } else if (cur.outcome === "different") {
+        setAnnouncement("You remember it differently.");
       }
     }
     if (cur && partnerAnswered && !f.partner) {
@@ -228,7 +241,7 @@ export function CoupleRoom({ code }: { code: string }) {
   const active = s?.status === "active" && !abandoned;
   const showSummary = s?.status === "finished" && dismissed !== s.id;
   const question = cur ? game.questions[cur.question_id] : undefined;
-  const endLabel = s?.mode === "compatibility" ? "End test" : s?.mode === "questions" ? "End deck" : "End challenges";
+  const endLabel = s?.mode === "compatibility" ? "End test" : s?.mode === "questions" ? "End deck" : s?.mode === "memories" ? "End memories" : "End challenges";
 
   let body: React.ReactNode;
   if (active && s && cur && question) {
@@ -266,6 +279,26 @@ export function CoupleRoom({ code }: { code: string }) {
             onStartTimer={() => void game.startTimer(cur.id)}
             onComplete={(done) => void game.completeChallenge(cur.id, done)}
             onConfirm={(ok) => void game.confirmChallenge(cur.id, ok)}
+            onNext={() => void game.nextCard()}
+          />
+        )}
+        {s.mode === "memories" && (
+          <MemoriesRound
+            session={s}
+            round={cur}
+            question={question}
+            me={me}
+            partner={partner}
+            mySeat={mySeat}
+            mine={game.answerOf(cur.id, r.me)}
+            theirs={game.answerOf(cur.id, r.opponentId)}
+            lang={lang}
+            busy={game.busy}
+            onSubmit={(text) => game.submitMemory(cur.id, text)}
+            onVote={(matched) => void game.voteMemory(cur.id, matched)}
+            onSave={() =>
+              setComposer({ title: questionText(question, lang), body: game.answerOf(cur.id, r.me)?.text_answer ?? "", questionId: question.id })
+            }
             onNext={() => void game.nextCard()}
           />
         )}
@@ -308,6 +341,7 @@ export function CoupleRoom({ code }: { code: string }) {
           void startMode(s.mode);
         }}
         onBack={() => setDismissed(s.id)}
+        onOpenMemories={() => setTimelineOpen(true)}
       />
     );
   } else if (abandoned) {
@@ -347,6 +381,12 @@ export function CoupleRoom({ code }: { code: string }) {
             </motion.div>
           ))}
         </div>
+        <Button variant="secondary" size="lg" onClick={() => setTimelineOpen(true)} className="w-full justify-between">
+          <span className="flex items-center gap-3">
+            <span aria-hidden>📸</span> Our Memories
+          </span>
+          <span className="text-sm text-muted">{mem.memories ? `${mem.memories.length} saved` : ""}</span>
+        </Button>
         {s?.status === "abandoned" && <p className="text-center text-sm text-muted">The last session was ended early.</p>}
       </section>
     );
@@ -401,6 +441,20 @@ export function CoupleRoom({ code }: { code: string }) {
 
       <CategoryPicker open={picker === "compatibility"} onClose={() => setPicker(null)} onPick={startCompat} lang={lang} busy={game.busy} />
       <ProfileSheet handle={partner?.handle ?? null} open={profileOpen} onClose={() => setProfileOpen(false)} />
+      <MemoriesTimeline
+        open={timelineOpen && !composer}
+        onClose={() => setTimelineOpen(false)}
+        memories={mem.memories}
+        photoUrls={mem.photoUrls}
+        questions={game.questions}
+        me={r.me}
+        players={r.players}
+        lang={lang}
+        onAdd={() => setComposer({ title: "", body: "", questionId: null })}
+        onDelete={mem.remove}
+        loadError={mem.error}
+      />
+      <MemoryComposer draft={composer} onClose={() => setComposer(null)} onSave={mem.save} />
 
       {partner && (
         <CoupleChat

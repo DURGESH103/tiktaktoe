@@ -3,22 +3,40 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { GlassCard } from "@/components/ui/GlassCard";
-import type { ChallengeResult, CoupleSession, DeckResult } from "../types";
+import type { ChallengeResult, CoupleSession, DeckResult, MemoriesResult } from "../types";
 import { HeartBurst } from "./HeartBurst";
 
-/** End of a Questions or Challenges session (Compatibility has its own CompatSummary). */
-export function SessionSummary({ session, onPlayAgain, onBack }: { session: CoupleSession; onPlayAgain: () => void; onBack: () => void }) {
+/** End of a Questions, Challenges or Memories session (Compatibility has its own CompatSummary). */
+export function SessionSummary({
+  session,
+  onPlayAgain,
+  onBack,
+  onOpenMemories,
+}: {
+  session: CoupleSession;
+  onPlayAgain: () => void;
+  onBack: () => void;
+  onOpenMemories?: () => void;
+}) {
   const challenge = session.mode === "challenges" ? (session.result as ChallengeResult | null) : null;
   const deck = session.mode === "questions" ? (session.result as DeckResult | null) : null;
+  const memories = session.mode === "memories" ? (session.result as MemoriesResult | null) : null;
 
   return (
     <div className="flex flex-col gap-4">
       <HeartBurst />
       <GlassCard className="flex flex-col items-center gap-3 p-6 text-center">
         <motion.span initial={{ scale: 0, rotate: -15 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 260, damping: 12 }} className="text-6xl" aria-hidden>
-          {challenge ? "🏅" : "💬"}
+          {challenge ? "🏅" : memories ? "📸" : "💬"}
         </motion.span>
-        {challenge ? (
+        {memories ? (
+          <>
+            <h2 className="font-display text-3xl font-bold">+{session.points} points</h2>
+            <p className="text-muted">
+              You remembered {memories.matched} of {memories.matched + memories.different} the same way 💞
+            </p>
+          </>
+        ) : challenge ? (
           <>
             <h2 className="font-display text-3xl font-bold">+{session.points} points</h2>
             <p className="text-muted">
@@ -35,6 +53,11 @@ export function SessionSummary({ session, onPlayAgain, onBack }: { session: Coup
           </>
         )}
       </GlassCard>
+      {memories && onOpenMemories && (
+        <Button variant="secondary" size="lg" onClick={onOpenMemories}>
+          Open Our Memories 📸
+        </Button>
+      )}
       <Button variant="romance" size="lg" onClick={onPlayAgain}>
         Play again 💘
       </Button>

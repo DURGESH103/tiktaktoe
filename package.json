@@ -14,7 +14,8 @@
     "check:friends": "node scripts/check-friends.mjs",
     "e2e:tictactoe": "node scripts/e2e-tictactoe.mjs",
     "check:rooms": "node scripts/check-rooms.mjs",
-    "e2e:couple": "node scripts/e2e-couple.mjs"
+    "e2e:couple": "node scripts/e2e-couple.mjs",
+    "check:memories": "node scripts/check-memories.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

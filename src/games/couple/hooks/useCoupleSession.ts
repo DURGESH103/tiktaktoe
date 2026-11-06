@@ -97,9 +97,12 @@ export function useCoupleSession(me: string | null) {
   const startTimer = useCallback((roundId: string) => call("start_challenge_timer", { p_round_id: roundId }), [call]);
   const completeChallenge = useCallback((roundId: string, done: boolean) => call("complete_challenge", { p_round_id: roundId, p_done: done }), [call]);
   const confirmChallenge = useCallback((roundId: string, ok: boolean) => call("confirm_challenge", { p_round_id: roundId, p_ok: ok }), [call]);
+  // Memories
+  const submitMemory = useCallback((roundId: string, text: string) => call("submit_memory_answer", { p_round_id: roundId, p_text: text }), [call]);
+  const voteMemory = useCallback((roundId: string, matched: boolean) => call("vote_memory_match", { p_round_id: roundId, p_matched: matched }), [call]);
 
   const current = useMemo(() => rounds.find((r) => r.idx === session?.current_round) ?? null, [rounds, session?.current_round]);
   const answerOf = useCallback((roundId: string, playerId: string | null) => answers.find((a) => a.round_id === roundId && a.player_id === playerId) ?? null, [answers]);
 
-  return { session, rounds, current, questions, answerOf, busy, error, me, configure, onResync: load, start, submit, next, quit, nextCard, startTimer, completeChallenge, confirmChallenge };
+  return { session, rounds, current, questions, answerOf, busy, error, me, configure, onResync: load, start, submit, next, quit, nextCard, startTimer, completeChallenge, confirmChallenge, submitMemory, voteMemory };
 }

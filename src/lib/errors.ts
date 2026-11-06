@@ -21,6 +21,11 @@ export type ErrorCode =
   | "NO_PENDING_REQUEST"
   | "NOT_FRIENDS"
   | "CHALLENGE_NOT_FOUND"
+  | "MEMORY_NOT_RESOLVED"
+  | "INVALID_PHOTO"
+  | "MEMORY_NOT_FOUND"
+  | "PHOTO_TOO_BIG"
+  | "PHOTO_UPLOAD_FAILED"
   | "NOT_SET_UP"
   | "NETWORK"
   | "UNKNOWN";
@@ -30,7 +35,7 @@ const KNOWN = new Set<string>([
   "GAME_NOT_PLAYING", "NOT_YOUR_TURN", "CELL_TAKEN", "INVALID_CELL", "NO_PROFILE",
   "NOT_AUTHENTICATED", "MESSAGE_EMPTY", "MESSAGE_TOO_LONG", "RATE_LIMITED", "INVALID_MESSAGE",
   "PLAYER_NOT_FOUND", "CANNOT_FRIEND_SELF", "CANNOT_CHALLENGE_SELF", "BLOCKED", "NO_PENDING_REQUEST", "NOT_FRIENDS",
-  "CHALLENGE_NOT_FOUND",
+  "CHALLENGE_NOT_FOUND", "MEMORY_NOT_RESOLVED", "INVALID_PHOTO", "MEMORY_NOT_FOUND",
 ]);
 
 // PostgREST / Postgres codes meaning "this table or function doesn't exist" — i.e. a migration hasn't been run.
@@ -77,6 +82,11 @@ export const ERROR_COPY: Record<ErrorCode, { title: string; body: string }> = {
   NO_PENDING_REQUEST: { title: "Request not found", body: "It may have been cancelled or already answered." },
   NOT_FRIENDS: { title: "Not friends", body: "You can only challenge friends." },
   CHALLENGE_NOT_FOUND: { title: "Challenge not found", body: "It may have expired." },
+  MEMORY_NOT_RESOLVED: { title: "Vote first", body: "Both of you tap “We matched” or “Different” before moving on." },
+  INVALID_PHOTO: { title: "Photo problem", body: "That photo couldn't be attached. Try another one." },
+  MEMORY_NOT_FOUND: { title: "Memory not found", body: "It may already have been deleted." },
+  PHOTO_TOO_BIG: { title: "Photo too big", body: "Photos must be under 2 MB. Try a smaller one or a screenshot." },
+  PHOTO_UPLOAD_FAILED: { title: "Upload failed", body: "The photo didn't upload. Check your connection and try again." },
   NOT_SET_UP: { title: "Not set up yet", body: "This feature isn't set up on the server yet. A database migration needs to be run." },
   NETWORK: { title: "You're offline", body: "Check your connection and try again." },
   UNKNOWN: { title: "Something went wrong", body: "Please try again." },

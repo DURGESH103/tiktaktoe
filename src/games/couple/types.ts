@@ -30,6 +30,10 @@ export interface ChallengeResult {
 export interface DeckResult {
   cards: number;
 }
+export interface MemoriesResult {
+  matched: number;
+  different: number;
+}
 
 export interface CoupleSession {
   id: string;
@@ -42,7 +46,7 @@ export interface CoupleSession {
   total_rounds: number;
   points: number;
   compat_pct: number | null;
-  result: CompatResult | ChallengeResult | DeckResult | null;
+  result: CompatResult | ChallengeResult | DeckResult | MemoriesResult | null;
   started_at: string;
   ended_at: string | null;
 }
@@ -58,7 +62,10 @@ export interface CoupleRound {
   revealed_at: string | null;
   /** Challenges */
   timer_started_at: string | null;
-  outcome: "claimed" | "completed" | "failed" | "skipped" | null;
+  outcome: "claimed" | "completed" | "failed" | "skipped" | "matched" | "different" | null;
+  /** Memories: each player's "we matched" vote (null = not voted yet). */
+  x_match: boolean | null;
+  o_match: boolean | null;
 }
 
 export interface CoupleAnswer {
@@ -67,5 +74,20 @@ export interface CoupleAnswer {
   self_answer: number | null;
   guess_answer: number | null;
   text_answer: string | null;
+  created_at: string;
+}
+
+/** A saved entry in the pair's "Our Memories" timeline. */
+export interface CoupleMemory {
+  id: string;
+  user_a: string;
+  user_b: string;
+  room_id: string | null;
+  created_by: string;
+  question_id: number | null;
+  title: string;
+  body: string;
+  /** Path in the private "couple-memories" bucket; shown via a short-lived signed URL. */
+  photo_path: string | null;
   created_at: string;
 }

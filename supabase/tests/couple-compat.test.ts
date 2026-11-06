@@ -170,7 +170,7 @@ describe("access rules", () => {
     await one(O, "select * from join_room($1)", [ttt.code]);
     expect(await errorOf(start(ttt.id))).toBe("ROOM_NOT_FOUND");
     expect(await errorOf(start(room.id, "nope"))).toBe("INVALID_CATEGORY");
-    expect(await errorOf(one(X, "select * from start_session($1, 'memories', 'memories')", [room.id]))).toBe("MODE_NOT_AVAILABLE");
+    expect(await errorOf(one(X, "select * from start_session($1, 'karaoke', null)", [room.id]))).toBe("MODE_NOT_AVAILABLE");
     const handle = (await t.db.query<Row>("select handle from players where id = $1", [X])).rows[0].handle;
     await one(O, "select block_user($1)", [handle]);
     expect(await errorOf(start(room.id))).toBe("BLOCKED");

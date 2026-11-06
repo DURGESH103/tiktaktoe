@@ -1,7 +1,8 @@
 // Couple Challenge end-to-end test in two headless browser windows at phone size.
 //   npm run e2e:couple        (app running on http://localhost:3000; BASE=... to point elsewhere)
 // Grows with each stage. Stage 1: hub → create → invite → join by code → lobby, presence,
-// reactions, chat, redirects, and challenging a friend to Couple Challenge.
+// reactions, chat, redirects, and challenging a friend to Couple Challenge. Stage 2: Compatibility.
+// Stage 3: Questions deck + Challenges. Stage 4: Memories, the timeline and private photos.
 import { chromium } from "playwright-core";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
@@ -221,6 +222,79 @@ try {
   await B.getByRole("heading", { name: "+45 points" }).waitFor();
   ok((await A.getByLabel("Challenge streak 2").count()) === 1, "summary: 45 points, 🔥 streak 2 (calculated on the server)");
   if (process.env.SHOTS) await A.screenshot({ path: `${process.env.SHOTS}/challenge-summary.png` });
+
+  console.log("Stage 4: Memories");
+  await A.getByRole("button", { name: "Back to modes" }).click();
+  await B.getByRole("button", { name: "Back to modes" }).click();
+  await A.getByRole("button", { name: /^Memories/ }).click();
+  await A.getByText("Memory 1 of 5").waitFor();
+  await B.getByText("Memory 1 of 5").waitFor();
+  ok(true, "starting Memories takes both players to prompt 1");
+  const write = async (p, text) => {
+    await p.getByLabel("How do you remember it?").fill(text);
+    await p.getByRole("button", { name: "Lock in 💌" }).click();
+  };
+  await write(A, "The college canteen <b>chai</b>");
+  await A.getByText(/Waiting for Durgesh to answer/).waitFor();
+  await B.getByText("Rahul has written theirs ✓ — your turn!").waitFor();
+  ok(true, "first to answer sees 'Waiting for Durgesh to answer…'; partner sees 'Rahul has written theirs ✓'");
+  await write(B, "Canteen, over chai");
+  await A.getByText("Did you remember it the same way?").waitFor();
+  await B.getByText("Did you remember it the same way?").waitFor();
+  ok((await B.getByText("The college canteen <b>chai</b>").count()) === 1, "both answers revealed side by side; markup shown as plain text");
+  if (process.env.SHOTS) await B.screenshot({ path: `${process.env.SHOTS}/memories-reveal.png` });
+  await A.getByRole("button", { name: "We matched ✅" }).click();
+  await B.getByText("Rahul has voted — your call!").waitFor();
+  await B.getByRole("button", { name: "We matched ✅" }).click();
+  await A.getByText("You both remembered it! +20 💞").waitFor();
+  await B.getByText("You both remembered it! +20 💞").waitFor();
+  ok((await A.getByLabel("20 points").count()) === 1, "both tap 'We matched' → +20 points on both screens");
+
+  // Save it to the timeline with a photo (the app icon stands in for a camera photo).
+  await A.getByRole("button", { name: "Save to Our Memories 📸" }).click();
+  await A.getByRole("dialog", { name: "Save to Our Memories 📸" }).waitFor();
+  await A.locator('input[type="file"]').setInputFiles("public/icons/icon-512.png");
+  await A.getByAltText("Selected photo").waitFor();
+  await A.getByRole("button", { name: "Save memory 💞" }).click();
+  await A.getByRole("dialog", { name: "Save to Our Memories 📸" }).waitFor({ state: "detached" });
+  ok(true, "memory saved with a photo (resized on the phone, private bucket)");
+
+  // Round 2: they disagree. Rounds 3–5: matched.
+  await A.getByRole("button", { name: "Next memory →" }).click();
+  await B.getByText("Memory 2 of 5").waitFor();
+  await write(A, "Goa");
+  await write(B, "Manali");
+  await A.getByRole("button", { name: "We matched ✅" }).click();
+  await B.getByRole("button", { name: "Different" }).click();
+  await A.getByText(/You remember it differently/).waitFor();
+  ok((await A.getByLabel("20 points").count()) === 1, "one 'Different' vote → no points");
+  for (let i = 2; i < 5; i++) {
+    await B.getByRole("button", { name: "Next memory →" }).click();
+    await A.getByText(`Memory ${i + 1} of 5`).waitFor();
+    await write(A, `Memory ${i + 1}`);
+    await write(B, `Memory ${i + 1}`);
+    await A.getByRole("button", { name: "We matched ✅" }).click();
+    await B.getByRole("button", { name: "We matched ✅" }).click();
+    await A.getByText("You both remembered it! +20 💞").waitFor();
+  }
+  await A.getByRole("button", { name: "See our memories score 💞" }).click();
+  await A.getByRole("heading", { name: "+80 points" }).waitFor();
+  await B.getByRole("heading", { name: "+80 points" }).waitFor();
+  ok((await B.getByText("You remembered 4 of 5 the same way 💞").count()) === 1, "summary: 4 of 5 matched, +80 points (server)");
+
+  // Timeline: B sees A's memory with the photo; only A can delete it; deletion shows up live on B.
+  await B.getByRole("button", { name: "Open Our Memories 📸" }).click();
+  const photo = B.getByRole("img", { name: /^Photo:/ });
+  await photo.waitFor();
+  await B.waitForFunction(() => [...document.querySelectorAll("img")].some((i) => i.alt.startsWith("Photo:") && i.complete && i.naturalWidth > 0));
+  ok(true, "partner sees the memory and its private photo (signed URL)");
+  ok((await B.getByRole("button", { name: /^Delete|Tap again to delete/ }).count()) === 0, "partner can't delete someone else's memory");
+  if (process.env.SHOTS) await B.screenshot({ path: `${process.env.SHOTS}/memories-timeline.png` });
+  await A.getByRole("button", { name: "Open Our Memories 📸" }).click();
+  await A.getByRole("button", { name: "Delete" }).first().click();
+  await A.getByRole("button", { name: "Tap again to delete" }).click();
+  await B.getByText("No memories yet").waitFor({ timeout: 15_000 });
+  ok(true, "creator deletes the memory (and photo); it disappears live on the partner's phone");
 } catch (e) {
   failures++;
   console.log("  ✗ FAIL", e.message.split("\n")[0]);

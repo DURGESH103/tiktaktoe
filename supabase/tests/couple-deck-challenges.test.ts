@@ -133,12 +133,12 @@ describe("Challenges", () => {
 });
 
 describe("compatibility is unchanged", () => {
-  it("still deals 10 questions from the chosen category; Memories still waits for stage 4", async () => {
+  it("still deals 10 questions from the chosen category; unknown modes are rejected", async () => {
     const room = await coupleRoom();
     const s = await one(X, "select * from start_session($1, 'compatibility', 'travel')", [room.id]);
     expect(s).toMatchObject({ mode: "compatibility", category: "travel", total_rounds: 10 });
     await one(X, "select * from quit_session($1)", [s.id]);
-    expect(await errorOf(one(X, "select * from start_session($1, 'memories', null)", [room.id]))).toBe("MODE_NOT_AVAILABLE");
+    expect(await errorOf(one(X, "select * from start_session($1, 'karaoke', null)", [room.id]))).toBe("MODE_NOT_AVAILABLE");
     expect(await errorOf(one(X, "select * from next_card($1, 1)", [s.id]))).toBe("MODE_NOT_AVAILABLE");
   });
 });
