@@ -32,6 +32,8 @@ export interface LudoState {
   sixes: number;
   /** Finishing order. The last player is added when the game ends. */
   placements: Color[];
+  /** Players who left mid-game, in leaving order: skipped, and ranked last (first to leave = last). */
+  forfeited?: Color[];
   finished: boolean;
 }
 
@@ -45,6 +47,7 @@ export type LudoEvent =
   | { type: "roll"; color: Color; dice: number }
   | { type: "three_sixes"; color: Color }
   | { type: "no_moves"; color: Color }
+  | { type: "forfeit"; color: Color }
   | { type: "move"; color: Color; token: number; from: number; to: number; captured: Capture[]; extra: boolean; done: boolean };
 
 export interface Step {
@@ -55,7 +58,7 @@ export interface Step {
 export function initialState(colors: Color[], mode: "classic" | "quick" = "classic"): LudoState {
   const tokens: Partial<Record<Color, number[]>> = {};
   for (const c of colors) tokens[c] = mode === "quick" ? [0, YARD, YARD, YARD] : [YARD, YARD, YARD, YARD];
-  return { colors: [...colors], tokens, turn: colors[0], phase: "roll", dice: null, sixes: 0, placements: [], finished: false };
+  return { colors: [...colors], tokens, turn: colors[0], phase: "roll", dice: null, sixes: 0, placements: [], forfeited: [], finished: false };
 }
 
 /** Square on the shared loop, or null in the yard / home column / home. */
@@ -85,14 +88,24 @@ export function distinctMoves(state: LudoState, color: Color, dice: number): num
   });
 }
 
+/** Still in the game: not finished and not left. */
+const isActive = (s: LudoState, c: Color) => !s.placements.includes(c) && !(s.forfeited ?? []).includes(c);
+
 function nextColor(state: LudoState, from: Color): Color {
   const n = state.colors.length;
   const i = state.colors.indexOf(from);
   for (let k = 1; k <= n; k++) {
     const c = state.colors[(i + k) % n];
-    if (!state.placements.includes(c)) return c;
+    if (isActive(state, c)) return c;
   }
   return from;
+}
+
+/** Final standings once one active player is left: finishers, the last active player, then leavers (latest first). */
+function endGame(s: LudoState): LudoState {
+  const remaining = s.colors.filter((c) => isActive(s, c));
+  const left = [...(s.forfeited ?? [])].reverse();
+  return { ...s, placements: [...s.placements, ...remaining, ...left], phase: "roll", dice: null, sixes: 0, finished: true };
 }
 
 function passTurn(state: LudoState): LudoState {
@@ -103,6 +116,7 @@ const clone = (s: LudoState): LudoState => ({
   ...s,
   colors: [...s.colors],
   placements: [...s.placements],
+  ...(s.forfeited ? { forfeited: [...s.forfeited] } : {}),
   tokens: Object.fromEntries(Object.entries(s.tokens).map(([c, t]) => [c, [...t!]])),
 });
 
@@ -161,11 +175,42 @@ export function move(state: LudoState, token: number): Step {
   const extra = !done && (dice === 6 || captured.length > 0 || to === HOME);
   const events: LudoEvent[] = [{ type: "move", color, token, from, to, captured, extra, done }];
 
-  const remaining = s.colors.filter((c) => !s.placements.includes(c));
-  if (remaining.length <= 1) {
-    s.placements.push(...remaining);
-    return { state: { ...s, phase: "roll", dice: null, sixes: 0, finished: true }, events };
-  }
+  if (s.colors.filter((c) => isActive(s, c)).length <= 1) return { state: endGame(s), events };
   if (extra) return { state: { ...s, phase: "roll", dice: null, sixes: dice === 6 ? s.sixes : 0 }, events };
   return { state: passTurn({ ...s, dice: null }), events };
+}
+
+/** A player leaves mid-game: their tokens leave the board, their turns are skipped, and they rank last. */
+export function forfeit(state: LudoState, color: Color): Step {
+  if (state.finished || !state.colors.includes(color) || !isActive(state, color)) return { state, events: [] };
+  const s = clone(state);
+  s.forfeited = [...(s.forfeited ?? []), color];
+  s.tokens[color] = [YARD, YARD, YARD, YARD];
+  const events: LudoEvent[] = [{ type: "forfeit", color }];
+  if (s.colors.filter((c) => isActive(s, c)).length <= 1) return { state: endGame(s), events };
+  return { state: s.turn === color ? passTurn(s) : s, events };
+}
+
+/**
+ * The move auto-play makes on a timeout (and for players marked away): a capture, else reaching
+ * home, else bringing a token out, else landing on a safe square, else the most advanced token.
+ * Ties go to the lowest token index. Mirrored by _ludo_best_move in SQL.
+ */
+export function bestMove(state: LudoState, color: Color, dice: number): number | null {
+  const tokens = state.tokens[color] ?? [];
+  let best: number | null = null;
+  let bestScore = -1;
+  for (const i of legalMoves(state, color, dice)) {
+    const from = tokens[i];
+    const to = from === YARD ? 0 : from + dice;
+    const sq = absSquare(color, to);
+    const captures =
+      sq !== null && !isSafe(sq) && state.colors.some((c) => c !== color && (state.tokens[c] ?? []).some((q) => absSquare(c, q) === sq));
+    const score = captures ? 5000 : to === HOME ? 4000 : from === YARD ? 3000 : sq !== null && isSafe(sq) ? 2000 + from : 1000 + from;
+    if (score > bestScore) {
+      best = i;
+      bestScore = score;
+    }
+  }
+  return best;
 }

@@ -1,7 +1,7 @@
 // The TypeScript engine (phone previews, unit tests) and the SQL engine (server, final authority)
 // must agree on every state and every event. Random games and random positions, played through both.
 import { beforeAll, describe, expect, it } from "vitest";
-import { COLORS, HOME, initialState, legalMoves, move, roll, type Color, type LudoState } from "../../src/games/ludo/engine";
+import { bestMove, COLORS, forfeit, HOME, initialState, legalMoves, move, roll, type Color, type LudoState } from "../../src/games/ludo/engine";
 import { createDb } from "./db";
 
 type Db = Awaited<ReturnType<typeof createDb>>;
@@ -21,6 +21,12 @@ const pick = <T,>(r: () => number, xs: readonly T[]) => xs[Math.floor(r() * xs.l
 
 async function sqlRoll(s: LudoState, d: number) {
   return (await t.db.query<{ r: { state: LudoState; events: unknown[] } }>("select public._ludo_roll($1::jsonb, $2) as r", [JSON.stringify(s), d])).rows[0].r;
+}
+async function sqlForfeit(s: LudoState, c: Color) {
+  return (await t.db.query<{ r: { state: LudoState; events: unknown[] } }>("select public._ludo_forfeit($1::jsonb, $2) as r", [JSON.stringify(s), c])).rows[0].r;
+}
+async function sqlBest(s: LudoState, c: Color, d: number) {
+  return (await t.db.query<{ b: number | null }>("select public._ludo_best_move($1::jsonb, $2, $3) as b", [JSON.stringify(s), c, d])).rows[0].b;
 }
 async function sqlMove(s: LudoState, tok: number) {
   return (await t.db.query<{ r: { state: LudoState; events: unknown[] } }>("select public._ludo_move($1::jsonb, $2) as r", [JSON.stringify(s), tok])).rows[0].r;
@@ -43,12 +49,22 @@ describe("TypeScript ↔ SQL engine parity", () => {
   it("full random games: every state and event matches", async () => {
     let steps = 0;
     let finished = 0;
+    let forfeits = 0;
     for (let game = 0; game < 14; game++) {
       const r = rng(1000 + game);
       const n = 2 + (game % 3);
       const colors = COLORS.filter((_, i) => (n === 2 ? i % 2 === 0 : i < n)) as Color[];
       let s = initialState(colors, game % 2 ? "quick" : "classic");
       for (let i = 0; i < 2500 && !s.finished; i++, steps++) {
+        // Now and then someone leaves (3–4 player games): skipped, ranked last.
+        if (n > 2 && r() < 0.004) {
+          const who = pick(r, s.colors);
+          const ts = forfeit(s, who);
+          expect(await sqlForfeit(s, who), `game ${game} step ${i} forfeit ${who}`).toEqual(ts);
+          s = ts.state;
+          forfeits += ts.events.length;
+          continue;
+        }
         if (s.phase === "roll") {
           const d = r() < 0.3 ? 6 : 1 + Math.floor(r() * 6); // extra 6s exercise entries and triples
           const ts = roll(s, d);
@@ -56,6 +72,7 @@ describe("TypeScript ↔ SQL engine parity", () => {
           expect(sq, `game ${game} step ${i} roll ${d}`).toEqual(ts);
           s = ts.state;
         } else {
+          expect(await sqlBest(s, s.turn, s.dice!), `game ${game} step ${i} best move`).toBe(bestMove(s, s.turn, s.dice!));
           const tok = pick(r, legalMoves(s, s.turn, s.dice!));
           const ts = move(s, tok);
           const sq = await sqlMove(s, tok);
@@ -67,6 +84,7 @@ describe("TypeScript ↔ SQL engine parity", () => {
     }
     expect(finished).toBeGreaterThanOrEqual(10); // most games are played to the very end
     expect(steps).toBeGreaterThan(3000);
+    expect(forfeits).toBeGreaterThan(0); // the leaving path was exercised
   }, 180_000);
 
   it("random positions × every roll: captures, safe squares, exact home, three sixes", async () => {
@@ -85,6 +103,7 @@ describe("TypeScript ↔ SQL engine parity", () => {
       if (live.length < 2) continue;
       const s: LudoState = { ...initialState(colors), tokens, placements, turn: pick(r, live), sixes: Math.floor(r() * 3) };
       for (let d = 1; d <= 6; d++) {
+        expect(await sqlBest(s, s.turn, d), `position ${k} best move ${d}`).toBe(bestMove(s, s.turn, d));
         const ts = roll(s, d);
         expect(await sqlRoll(s, d), `position ${k} roll ${d}`).toEqual(ts);
         if (ts.state.phase === "move") {

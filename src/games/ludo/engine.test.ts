@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { absSquare, distinctMoves, HOME, initialState, legalMoves, move, roll, YARD, type Color, type LudoState } from "./engine";
+import { absSquare, bestMove, distinctMoves, forfeit, HOME, initialState, legalMoves, move, roll, YARD, type Color, type LudoState } from "./engine";
 
 /** A state with chosen token positions; red to roll unless said otherwise. */
 function at(tokens: Partial<Record<Color, number[]>>, extra: Partial<LudoState> = {}): LudoState {
@@ -131,5 +131,57 @@ describe("auto-move", () => {
     const r = roll(at({ red: [10, 20, YARD, YARD], yellow: [YARD, YARD, YARD, YARD] }), 2);
     expect(r.state).toMatchObject({ phase: "move", dice: 2 });
     expect(() => move(r.state, 2)).toThrow("illegal move"); // yard token can't move on a 2
+  });
+});
+
+describe("leaving mid-game (forfeit)", () => {
+  it("the leaver's tokens leave the board and their turns are skipped", () => {
+    const s = at({ red: [10, YARD, YARD, YARD], green: [5, 20, YARD, YARD], yellow: [3, YARD, YARD, YARD] }, { turn: "green" });
+    const r = forfeit(s, "green");
+    expect(r.events).toEqual([{ type: "forfeit", color: "green" }]);
+    expect(r.state.tokens.green).toEqual([YARD, YARD, YARD, YARD]);
+    expect(r.state).toMatchObject({ turn: "yellow", forfeited: ["green"], finished: false });
+    expect(roll(r.state, 2).state.turn).toBe("red"); // yellow → red, green skipped
+  });
+
+  it("leaving counts as last place; the first to leave ranks lowest", () => {
+    const four = at({ red: [10, YARD, YARD, YARD], green: [5, YARD, YARD, YARD], yellow: [3, YARD, YARD, YARD], blue: [1, YARD, YARD, YARD] });
+    const a = forfeit(four, "blue").state;
+    const b = forfeit(a, "green").state; // two players left: red and yellow
+    expect(b.finished).toBe(false);
+    const end = forfeit(b, "yellow").state; // only red is left → game over
+    expect(end).toMatchObject({ finished: true, placements: ["red", "yellow", "green", "blue"] });
+  });
+
+  it("a finisher keeps their place ahead of the remaining player and leavers", () => {
+    const s = at({ red: [56, 56, 56, 55], green: [5, YARD, YARD, YARD], yellow: [3, YARD, YARD, YARD] }, { forfeited: ["yellow"], tokens: { red: [56, 56, 56, 55], green: [5, YARD, YARD, YARD], yellow: [YARD, YARD, YARD, YARD] } });
+    expect(roll(s, 1).state).toMatchObject({ finished: true, placements: ["red", "green", "yellow"] });
+  });
+
+  it("is a no-op for someone already out or a finished game", () => {
+    const s = forfeit(initialState(["red", "yellow", "blue"]), "blue").state;
+    expect(forfeit(s, "blue").state).toBe(s);
+  });
+});
+
+describe("best simple move (timeouts and away players)", () => {
+  const base = { red: [10, 20, YARD, 50], yellow: [YARD, YARD, YARD, YARD] };
+  it("prefers a capture", () => {
+    // Yellow p2 = square 28; red token 1 at p22 + 6 lands on it.
+    const s = at({ red: [10, 22, YARD, 30], yellow: [2, YARD, YARD, YARD] }, { phase: "move", dice: 6 });
+    expect(bestMove(s, "red", 6)).toBe(1);
+  });
+  it("then reaching home, then bringing a token out", () => {
+    expect(bestMove(at({ red: [10, 20, YARD, 50], yellow: [YARD, YARD, YARD, YARD] }), "red", 6)).toBe(3); // 50 + 6 = home
+    expect(bestMove(at(base), "red", 6)).toBe(3);
+    expect(bestMove(at({ red: [10, 20, YARD, 40], yellow: [YARD, YARD, YARD, YARD] }), "red", 6)).toBe(2); // bring one out
+  });
+  it("then a safe square, then the most advanced token", () => {
+    // red p5 + 3 = square 8 (star) beats red p30 + 3 (plain square).
+    expect(bestMove(at({ red: [5, 30, YARD, YARD], yellow: [YARD, YARD, YARD, YARD] }), "red", 3)).toBe(0);
+    expect(bestMove(at({ red: [10, 30, YARD, YARD], yellow: [YARD, YARD, YARD, YARD] }), "red", 4)).toBe(1);
+  });
+  it("returns null when nothing can move", () => {
+    expect(bestMove(at({ red: [YARD, YARD, YARD, YARD], yellow: [YARD, YARD, YARD, YARD] }), "red", 3)).toBeNull();
   });
 });

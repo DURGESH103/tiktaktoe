@@ -201,6 +201,73 @@ try {
   await A.getByRole("button", { name: "Back to the table" }).click();
   await A.getByText("Waiting for 1 player to be ready").waitFor();
   ok(true, "after the game the table is back in the lobby (guests press Ready again)");
+
+  console.log("Stage 3: 3 players, turn timer, away, I'm back, leaving mid-game");
+  await B.getByRole("button", { name: "Back to the table" }).click();
+  await A.getByRole("radio", { name: "3" }).click();
+  await C.goto(`${BASE}/ludo/${code2}`);
+  await seat(A, "Green").waitFor();
+  await B.getByRole("button", { name: "I'm ready" }).click();
+  await C.getByRole("button", { name: "I'm ready" }).click();
+  await A.getByText("Everyone's ready!").waitFor();
+  // Rounds 1–4: red's turn runs out (auto 2s), green and yellow roll 2. Round 5: red and green
+  // roll 2, then yellow leaves. Finally red's last roll (1).
+  await admin.from("ludo_test_dice").insert([...Array(14).fill(2), 1].map((value) => ({ room_id: roomRow.id, value })));
+  await A.getByRole("button", { name: "Start game" }).click();
+  const page3 = { red: A, green: B, yellow: C }; // (Durgesh left the results screen above)
+  let g3 = await gameRow();
+  ok(JSON.stringify(g3.state.colors) === '["red","green","yellow"]', "three players: red, green, yellow take turns");
+  await B.getByRole("img", { name: /seconds left/ }).waitFor();
+  ok(true, "the current player's avatar shows a countdown ring on everyone's screen");
+
+  const rollAs = async (c) => {
+    await page3[c].getByRole("button", { name: "Roll the dice" }).click();
+    g3 = await waitSeq(g3.seq);
+  };
+  // Rounds 1–3: red does nothing, so the server plays red's turn when the 20-second clock runs out.
+  for (let round = 1; round <= 3; round++) {
+    const t0 = Date.now();
+    g3 = await waitSeq(g3.seq);
+    const waited = (Date.now() - t0) / 1000;
+    if (round === 1) {
+      ok(waited >= 18 && waited < 40, `red's turn auto-played after the 20-second timer (${waited.toFixed(1)}s)`);
+      ok(g3.last_events[0]?.type === "roll" && g3.timeouts.red === 1, "timeout: auto-roll + best move, 1 timeout counted");
+    }
+    await rollAs("green");
+    await rollAs("yellow");
+  }
+  ok(JSON.stringify(g3.away) === '["red"]', "3 timeouts in a row → Rahul is marked away");
+  await B.getByText("Away · auto-play").waitFor();
+  // Round 4: away turns play almost at once.
+  const t4 = Date.now();
+  g3 = await waitSeq(g3.seq);
+  const t4s = (Date.now() - t4) / 1000;
+  ok(t4s < 8, `an away player's turn auto-plays quickly (${t4s.toFixed(1)}s, not 20s)`);
+  await rollAs("green");
+  // Rahul taps "I'm back" while it's someone else's turn.
+  await A.getByRole("button", { name: "I'm back" }).click();
+  for (let i = 0; i < 50 && (await gameRow()).away.length; i++) await new Promise((r) => setTimeout(r, 100));
+  g3 = await gameRow();
+  ok(g3.away.length === 0, "\"I'm back\" takes control back");
+  await rollAs("yellow");
+  // Round 5: red and green roll themselves.
+  await rollAs("red");
+  await rollAs("green");
+
+  // Priya leaves on her own turn: she's skipped and ranked last.
+  await C.getByText("Your turn — roll the dice!").waitFor();
+  await C.getByRole("button", { name: "Leave game" }).click();
+  await C.getByRole("button", { name: "Tap again: leaving counts as last place" }).click();
+  await C.waitForURL(`${BASE}/`);
+  g3 = await waitSeq(g3.seq);
+  ok(g3.state.forfeited?.[0] === "yellow" && g3.state.turn === "red", "leaving mid-game: Priya is skipped (turn passes to red)");
+  await A.getByText("Left").waitFor();
+  // Fast-forward (test only, with the service key): red one step from finishing.
+  await admin.from("ludo_games").update({ state: { ...g3.state, tokens: { ...g3.state.tokens, red: [56, 56, 56, 55] } } }).eq("id", g3.id);
+  await A.getByRole("button", { name: "Roll the dice" }).click();
+  await A.getByRole("heading", { name: "You win!" }).waitFor();
+  const standings = (await B.getByRole("list", { name: "Final standings" }).innerText()).replace(/\s+/g, " ");
+  ok(/Rahul.*You.*Priya/.test(standings), `standings: Rahul 1st, Durgesh 2nd, Priya (left) last — "${standings.slice(0, 60)}…"`);
 } catch (e) {
   failures++;
   console.log("  ✗ FAIL", e.message.split("\n")[0]);

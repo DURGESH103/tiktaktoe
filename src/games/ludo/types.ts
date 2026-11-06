@@ -36,4 +36,10 @@ export interface LudoGameRow {
   seq: number;
   started_at: string;
   ended_at: string | null;
+  /** Turn clock (server time): 20 s to roll, then 20 s to move; 1.5 s for players marked away. */
+  turn_started_at: string | null;
+  turn_deadline: string | null;
+  /** Consecutive timeouts per colour, and colours being auto-played. */
+  timeouts: Partial<Record<LudoColor, number>>;
+  away: LudoColor[];
 }

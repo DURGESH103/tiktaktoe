@@ -252,6 +252,45 @@ export function useLudoRoom(code: string, me: string | null) {
     [act, game],
   );
 
+  const resume = useCallback(() => game && act("move", "ludo_resume", { p_game_id: game.id }), [act, game]);
+
+  // ---- Turn clock --------------------------------------------------------------------------
+  // Local deadline = when this turn's clock reached us + its length (server time span), so phone
+  // clocks that are off don't matter. Just after it, every seated phone asks the server to play
+  // the turn; the server checks the deadline itself and only the first request counts.
+  const [deadline, setDeadline] = useState<number | null>(null);
+  const clockKey = game && game.status === "playing" ? `${game.id}:${game.seq}:${game.turn_started_at}` : null;
+  useEffect(() => {
+    if (!game || !clockKey || !game.turn_deadline || !game.turn_started_at) {
+      setDeadline(null);
+      return;
+    }
+    setDeadline(Date.now() + (Date.parse(game.turn_deadline) - Date.parse(game.turn_started_at)));
+    // Keyed on clockKey on purpose: re-runs only when a new turn clock starts.
+  }, [clockKey]);
+
+  const seatedInGame = !!game && !!me && Object.values(game.seats).includes(me);
+  useEffect(() => {
+    if (!game || deadline === null || !seatedInGame || game.status !== "playing") return;
+    const { id, seq } = game;
+    let timer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+    const fire = async (attempt: number) => {
+      if (cancelled || document.visibilityState !== "visible") return;
+      const { data, error } = await sb.rpc("ludo_timeout", { p_game_id: id, p_seq: seq });
+      if (cancelled) return;
+      if (!error) applyGame(data as LudoGameRow);
+      else if (error.message === "TOO_EARLY" && attempt < 5) timer = setTimeout(() => void fire(attempt + 1), 800);
+      else if (roomRef.current) void loadTable(roomRef.current.id); // someone else was first
+    };
+    // A little random spread so all phones don't ask at the same instant.
+    timer = setTimeout(() => void fire(0), Math.max(0, deadline - Date.now()) + 250 + Math.random() * 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [game, deadline, seatedInGame, sb, applyGame, loadTable]);
+
   const leave = useCallback(async () => {
     if (room) await sb.rpc("leave_room", { p_room_id: room.id });
   }, [room, sb]);
@@ -266,5 +305,5 @@ export function useLudoRoom(code: string, me: string | null) {
   );
 
   const isHost = !!room && room.player_x === me;
-  return { loading, error, actionError, busy: busy || pending === "start", pending, room, settings, seats, players, game, me, isHost, presentIds, connection, reactions, react, setReady, setOptions, start, rollDice, moveToken, leave };
+  return { loading, error, actionError, busy: busy || pending === "start", pending, room, settings, seats, players, game, me, isHost, presentIds, connection, reactions, react, setReady, setOptions, start, rollDice, moveToken, resume, deadline, leave };
 }

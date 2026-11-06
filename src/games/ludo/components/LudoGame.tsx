@@ -2,6 +2,7 @@
 
 import clsx from "clsx";
 import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 import { AvatarBadge } from "@/components/ui/AvatarBadge";
 import { Button } from "@/components/ui/Button";
 import { ERROR_COPY, type ErrorCode } from "@/lib/errors";
@@ -22,6 +23,9 @@ export function LudoGame({
   error,
   onRoll,
   onMove,
+  onResume,
+  deadline,
+  presentIds,
 }: {
   game: LudoGameRow;
   me: string;
@@ -31,7 +35,13 @@ export function LudoGame({
   error: ErrorCode | null;
   onRoll: () => void;
   onMove: (token: number) => void;
+  onResume: () => void;
+  /** Local time the current turn runs out (see useLudoRoom). */
+  deadline: number | null;
+  /** Who is connected right now (presence). */
+  presentIds: Set<string> | null;
 }) {
+  const offlineFor = useOfflineSince(Object.values(game.seats).filter((id): id is string => !!id), presentIds, me);
   const s = game.state;
   const myColor = (Object.entries(game.seats).find(([, id]) => id === me)?.[0] ?? null) as Color | null;
   const nameOf = (c: Color) => (game.seats[c] === me ? "You" : (players[game.seats[c] ?? ""]?.name ?? COLOR_STYLE[c].label));
@@ -39,13 +49,17 @@ export function LudoGame({
   const myTurn = !s.finished && s.turn === myColor;
   const movable = myTurn && s.phase === "move" && s.dice ? legalMoves(s, s.turn, s.dice) : [];
 
+  const away = new Set(game.away ?? []);
+  const iAmAway = !!myColor && away.has(myColor);
   const status = s.finished
     ? "Game over"
-    : myTurn
-      ? s.phase === "roll"
-        ? "Your turn — roll the dice!"
-        : `You rolled ${s.dice}. Pick a token to move.`
-      : `${nameOf(s.turn)}'s turn`;
+    : away.has(s.turn)
+      ? `Auto-playing for ${nameOf(s.turn) === "You" ? "you" : nameOf(s.turn)}…`
+      : myTurn
+        ? s.phase === "roll"
+          ? "Your turn — roll the dice!"
+          : `You rolled ${s.dice}. Pick a token to move.`
+        : `${nameOf(s.turn)}'s turn`;
 
   return (
     <div className="flex flex-col gap-3">
@@ -63,14 +77,19 @@ export function LudoGame({
               aria-current={on ? "true" : undefined}
             >
               <span className="relative shrink-0">
+                {on && deadline !== null && <CountdownRing deadline={deadline} color={COLOR_HEX[c]} short={away.has(c)} />}
                 <AvatarBadge avatar={p?.avatar ?? "❔"} color={p?.color ?? "slate"} size="sm" />
                 <span aria-hidden className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full ring-2 ring-bg" style={{ background: COLOR_HEX[c] }} />
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold">{nameOf(c)}</span>
                 <span className="block text-xs text-muted">
-                  {place >= 0 ? ["🥇 1st", "🥈 2nd", "🥉 3rd", "4th"][place] : `🏠 ${home}/4`}
+                  {place >= 0 ? ["🥇 1st", "🥈 2nd", "🥉 3rd", "4th"][place] : (s.forfeited ?? []).includes(c) ? "Left" : `🏠 ${home}/4`}
                 </span>
+                {away.has(c) && !s.finished && <span className="block text-[11px] font-semibold text-warn">Away · auto-play</span>}
+                {!away.has(c) && offlineFor(game.seats[c]) !== null && !(s.forfeited ?? []).includes(c) && (
+                  <span className="block text-[11px] font-semibold text-warn">{offlineFor(game.seats[c])! >= 30 ? "Disconnected" : "Offline…"}</span>
+                )}
               </span>
             </li>
           );
@@ -92,6 +111,15 @@ export function LudoGame({
         </AnimatePresence>
         <p className="mt-1 min-h-5 text-sm text-muted">{describeEvents(game.last_events, nameOf)}</p>
       </div>
+
+      {iAmAway && !s.finished && (
+        <div role="alert" className="flex items-center gap-3 rounded-2xl border border-warn/40 bg-warn/10 p-3">
+          <p className="min-w-0 flex-1 text-sm">You missed 3 turns, so your turns are being played automatically.</p>
+          <Button onClick={onResume} className="shrink-0 !px-3 text-sm">
+            I&apos;m back
+          </Button>
+        </div>
+      )}
 
       <LudoBoard state={s} turnColor={s.finished ? null : s.turn} movableColor={movable.length ? myColor : null} movable={movable} onMove={onMove} names={names} />
 
@@ -149,4 +177,53 @@ function describeEvents(events: LudoEvent[], nameOf: (c: Color) => string): stri
     }
   }
   return parts.join(" · ");
+}
+
+/** Ring around the current player's avatar that drains as their time runs out (red near the end). */
+function CountdownRing({ deadline, color, short }: { deadline: number; color: string; short: boolean }) {
+  const total = short ? 1.5 : 20;
+  const [left, setLeft] = useState(() => Math.max(0, (deadline - Date.now()) / 1000));
+  useEffect(() => {
+    const t = setInterval(() => setLeft(Math.max(0, (deadline - Date.now()) / 1000)), 200);
+    return () => clearInterval(t);
+  }, [deadline]);
+  const r = 22;
+  const circ = 2 * Math.PI * r;
+  const frac = Math.min(1, left / total);
+  return (
+    <svg className="pointer-events-none absolute -inset-[7px] -rotate-90" width="50" height="50" viewBox="0 0 50 50" aria-label={`${Math.ceil(left)} seconds left`} role="img">
+      <circle cx="25" cy="25" r={r} fill="none" strokeWidth="3" className="stroke-fg/10" />
+      <circle
+        cx="25"
+        cy="25"
+        r={r}
+        fill="none"
+        strokeWidth="3"
+        strokeLinecap="round"
+        stroke={left <= 5 && !short ? "rgb(var(--danger))" : color}
+        strokeDasharray={circ}
+        strokeDashoffset={circ * (1 - frac)}
+        className="transition-[stroke-dashoffset] duration-200 ease-linear"
+      />
+    </svg>
+  );
+}
+
+/** Seconds each player has been offline (null = connected). Uses room presence; me is always online. */
+function useOfflineSince(ids: string[], present: Set<string> | null, me: string) {
+  const since = useRef(new Map<string, number>());
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 5000);
+    return () => clearInterval(t);
+  }, []);
+  const now = Date.now();
+  for (const id of ids) {
+    if (id === me || !present || present.has(id)) since.current.delete(id);
+    else if (!since.current.has(id)) since.current.set(id, now);
+  }
+  return (id: string | undefined) => {
+    const t = id ? since.current.get(id) : undefined;
+    return t === undefined ? null : Math.floor((now - t) / 1000);
+  };
 }

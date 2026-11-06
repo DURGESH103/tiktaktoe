@@ -135,14 +135,29 @@ export function LudoRoom({ code }: { code: string }) {
     return shell(
       <>
         <div className="relative">
-          <LudoGame game={game} me={r.me} players={r.players} pending={r.pending} error={r.actionError} onRoll={() => void r.rollDice()} onMove={(t) => void r.moveToken(t)} />
+          <LudoGame
+            game={game}
+            me={r.me}
+            players={r.players}
+            pending={r.pending}
+            error={r.actionError}
+            onRoll={() => void r.rollDice()}
+            onMove={(t) => void r.moveToken(t)}
+            onResume={() => void r.resume()}
+            deadline={r.deadline}
+            presentIds={r.presentIds}
+          />
           <ReactionLayer reactions={r.reactions} me={r.me} />
         </div>
         <ReactionBar onReact={r.react} />
+        <Button variant={confirmLeave ? "danger" : "ghost"} onClick={() => (confirmLeave ? leave() : setConfirmLeave(true))} className="mx-auto">
+          {confirmLeave ? "Tap again: leaving counts as last place" : "Leave game"}
+        </Button>
       </>,
     );
   }
-  if (game && game.status === "finished" && dismissed !== game.id && r.room.status !== "abandoned") {
+  // Results stay up even if the table closed meanwhile (e.g. the host left during the game).
+  if (game && game.status === "finished" && dismissed !== game.id) {
     return shell(<LudoResults game={game} me={r.me} players={r.players} onBack={() => setDismissed(game.id)} />);
   }
 
