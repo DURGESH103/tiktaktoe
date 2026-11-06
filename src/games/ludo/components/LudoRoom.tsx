@@ -157,7 +157,8 @@ export function LudoRoom({ code }: { code: string }) {
     );
   }
   // Results stay up even if the table closed meanwhile (e.g. the host left during the game).
-  if (game && game.status === "finished" && dismissed !== game.id) {
+  // ...only for people who played in it (someone who sits down afterwards goes straight to the lobby).
+  if (game && game.status === "finished" && dismissed !== game.id && Object.values(game.seats).includes(r.me)) {
     return shell(<LudoResults game={game} me={r.me} players={r.players} onBack={() => setDismissed(game.id)} />);
   }
 
