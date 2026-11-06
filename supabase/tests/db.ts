@@ -7,7 +7,7 @@ import path from "node:path";
 const MIGRATIONS = path.resolve(__dirname, "../migrations");
 
 const SUPABASE_EMULATION = `
-  create role anon; create role authenticated;
+  create role anon; create role authenticated; create role service_role;
   create schema auth;
   create table auth.users (id uuid primary key);
   create function auth.uid() returns uuid language sql stable as

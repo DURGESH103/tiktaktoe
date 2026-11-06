@@ -23,9 +23,11 @@ import { useLudoRoom } from "../hooks/useLudoRoom";
 import { activeSeats, allowedSeats, startState } from "../lib/seats";
 import type { LudoMode } from "../types";
 import { InviteFriendsSheet } from "./InviteFriendsSheet";
+import { LudoGame } from "./LudoGame";
+import { LudoResults } from "./LudoResults";
 import { SeatGrid } from "./SeatGrid";
 
-/** /ludo/[code]: the Ludo table. Stage 1 = the lobby (the board arrives in stage 2). */
+/** /ludo/[code]: the Ludo table — lobby, game, and results. */
 export function LudoRoom({ code }: { code: string }) {
   const router = useRouter();
   const { user } = useAuth();
@@ -35,6 +37,8 @@ export function LudoRoom({ code }: { code: string }) {
   const [announcement, setAnnouncement] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  // Results of a finished game stay up until you go back to the lobby (per device).
+  const [dismissed, setDismissed] = useState<string | null>(null);
 
   // A Tic-Tac-Toe or Couple code opened here: send it to its own page.
   const isOtherGame = !!r.room && r.room.game_type !== "ludo";
@@ -125,6 +129,23 @@ export function LudoRoom({ code }: { code: string }) {
   }
   if (!r.room || !r.me || !r.settings) return shell(<LobbySkeleton />);
 
+  // A game in progress, or the results of the one that just ended (until "Back to lobby").
+  const game = r.game;
+  if (game && game.status === "playing" && r.room.status !== "abandoned") {
+    return shell(
+      <>
+        <div className="relative">
+          <LudoGame game={game} me={r.me} players={r.players} busy={r.busy} error={r.actionError} onRoll={() => void r.rollDice()} onMove={(t) => void r.moveToken(t)} />
+          <ReactionLayer reactions={r.reactions} me={r.me} />
+        </div>
+        <ReactionBar onReact={r.react} />
+      </>,
+    );
+  }
+  if (game && game.status === "finished" && dismissed !== game.id && r.room.status !== "abandoned") {
+    return shell(<LudoResults game={game} me={r.me} players={r.players} onBack={() => setDismissed(game.id)} />);
+  }
+
   if (r.room.status === "abandoned") {
     return shell(
       <div className="pt-8">
@@ -207,13 +228,7 @@ export function LudoRoom({ code }: { code: string }) {
 
       {r.isHost ? (
         <div className="flex flex-col gap-1">
-          <Button
-            size="lg"
-            disabled={!start.ok}
-            onClick={() =>
-              social?.toast({ title: "Board coming next 🎲", body: "The Ludo board and dice arrive in the next update. Your lobby works already!" })
-            }
-          >
+          <Button size="lg" disabled={!start.ok} loading={r.busy} onClick={() => void r.start()}>
             Start game
           </Button>
           <p className="text-center text-xs text-muted" role="status">

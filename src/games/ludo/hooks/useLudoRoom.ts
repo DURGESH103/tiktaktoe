@@ -8,7 +8,7 @@ import { toErrorCode, type ErrorCode } from "@/lib/errors";
 import { createRateLimiter, isReaction, type ReactionEmoji } from "@/lib/reactions";
 import { getSupabase } from "@/lib/supabase/client";
 import type { Player, Room } from "@/types/db";
-import type { LudoSeat, LudoSettings } from "../types";
+import type { LudoGameRow, LudoSeat, LudoSettings } from "../types";
 
 const REACTION_TTL_MS = 2400;
 
@@ -30,6 +30,16 @@ export function useLudoRoom(code: string, me: string | null) {
   const [settings, setSettings] = useState<LudoSettings | null>(null);
   const [seats, setSeats] = useState<LudoSeat[]>([]);
   const [players, setPlayers] = useState<Record<string, Player>>({});
+  const [game, setGameRaw] = useState<LudoGameRow | null>(null);
+  /** Applies a game snapshot unless it's older than what we have (seq only ever goes up). */
+  const applyGame = useCallback((next: LudoGameRow | null) => {
+    setGameRaw((cur) => {
+      if (!next) return cur && cur.status === "playing" ? cur : next;
+      if (cur && cur.id === next.id && next.seq < cur.seq) return cur;
+      if (cur && cur.id !== next.id && next.started_at < cur.started_at) return cur;
+      return keep<LudoGameRow | null>(next)(cur);
+    });
+  }, []);
   const [error, setError] = useState<ErrorCode | null>(null);
   const [actionError, setActionError] = useState<ErrorCode | null>(null);
   const [busy, setBusy] = useState(false);
@@ -54,9 +64,10 @@ export function useLudoRoom(code: string, me: string | null) {
   const loadTable = useCallback(
     async (roomId: string) => {
       const seq = ++loadSeq.current;
-      const [rs, ls] = await Promise.all([
+      const [rs, ls, gs] = await Promise.all([
         sb.from("room_players").select("*").eq("room_id", roomId).order("seat"),
         sb.from("ludo_rooms").select("*").eq("room_id", roomId).maybeSingle(),
+        sb.from("ludo_games").select("*").eq("room_id", roomId).order("started_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
       const list = (rs.data as LudoSeat[] | null) ?? [];
       const ids = list.map((s) => s.player_id);
@@ -66,8 +77,9 @@ export function useLudoRoom(code: string, me: string | null) {
       setSeats(keep(list));
       setSettings(keep((ls.data as LudoSettings | null) ?? null));
       if (ps.data) setPlayers(keep(Object.fromEntries((ps.data as Player[]).map((p) => [p.id, p]))));
+      if (!gs.error) applyGame((gs.data as LudoGameRow | null) ?? null);
     },
-    [sb],
+    [sb, applyGame],
   );
 
   /** join_room is idempotent for seated players, so this doubles as "restore after refresh". */
@@ -111,6 +123,10 @@ export function useLudoRoom(code: string, me: string | null) {
       })
         .on("postgres_changes", { event: "*", schema: "public", table: "room_players", filter: `room_id=eq.${r.id}` }, reloadSoon)
         .on("postgres_changes", { event: "*", schema: "public", table: "ludo_rooms", filter: `room_id=eq.${r.id}` }, reloadSoon)
+        // Game moves arrive as full rows: apply straight away (the seq guard drops stale ones).
+        .on("postgres_changes", { event: "*", schema: "public", table: "ludo_games", filter: `room_id=eq.${r.id}` }, (p) => {
+          if (p.new && "id" in p.new) applyGame(p.new as LudoGameRow);
+        })
         .on("presence", { event: "sync" }, () => setPresentIds(new Set(Object.keys(ch.presenceState()))))
         // Reactions: only from someone seated at this table, only the fixed emoji set, rate-limited.
         .on("broadcast", { event: "reaction" }, ({ payload }) => {
@@ -190,6 +206,30 @@ export function useLudoRoom(code: string, me: string | null) {
     (maxPlayers: number, mode: string) => room && call("set_ludo_options", { p_room_id: room.id, p_max_players: maxPlayers, p_mode: mode }),
     [call, room],
   );
+  // Game actions return the updated game, applied at once (no waiting for the realtime echo).
+  const act = useCallback(
+    async (fn: string, args: Record<string, unknown>) => {
+      setBusy(true);
+      setActionError(null);
+      const { data, error } = await sb.rpc(fn, args);
+      setBusy(false);
+      if (error) {
+        const code = toErrorCode(error);
+        console.warn(`[ludo] ${fn} failed:`, error);
+        // A double tap (STALE_MOVE) isn't an error for the player: just catch up.
+        if (code !== "STALE_MOVE") setActionError(code);
+        if (roomRef.current) await loadTable(roomRef.current.id);
+        return false;
+      }
+      applyGame(data as LudoGameRow);
+      return true;
+    },
+    [sb, loadTable, applyGame],
+  );
+  const start = useCallback(() => room && act("start_ludo", { p_room_id: room.id }), [act, room]);
+  const rollDice = useCallback(() => game && act("roll_dice", { p_game_id: game.id, p_seq: game.seq }), [act, game]);
+  const moveToken = useCallback((token: number) => game && act("move_token", { p_game_id: game.id, p_token: token, p_seq: game.seq }), [act, game]);
+
   const leave = useCallback(async () => {
     if (room) await sb.rpc("leave_room", { p_room_id: room.id });
   }, [room, sb]);
@@ -204,5 +244,5 @@ export function useLudoRoom(code: string, me: string | null) {
   );
 
   const isHost = !!room && room.player_x === me;
-  return { loading, error, actionError, busy, room, settings, seats, players, me, isHost, presentIds, connection, reactions, react, setReady, setOptions, leave };
+  return { loading, error, actionError, busy, room, settings, seats, players, game, me, isHost, presentIds, connection, reactions, react, setReady, setOptions, start, rollDice, moveToken, leave };
 }

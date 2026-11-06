@@ -31,6 +31,12 @@ export type ErrorCode =
   | "NOT_HOST"
   | "ALREADY_IN_ROOM"
   | "INVALID_OPTIONS"
+  | "NOT_ENOUGH_PLAYERS"
+  | "NOT_ALL_READY"
+  | "NOT_ROLL_PHASE"
+  | "NOT_MOVE_PHASE"
+  | "ILLEGAL_MOVE"
+  | "STALE_MOVE"
   | "NOT_SET_UP"
   | "NETWORK"
   | "UNKNOWN";
@@ -42,6 +48,7 @@ const KNOWN = new Set<string>([
   "PLAYER_NOT_FOUND", "CANNOT_FRIEND_SELF", "CANNOT_CHALLENGE_SELF", "BLOCKED", "NO_PENDING_REQUEST", "NOT_FRIENDS",
   "CHALLENGE_NOT_FOUND", "MEMORY_NOT_RESOLVED", "INVALID_PHOTO", "MEMORY_NOT_FOUND",
   "GAME_STARTED", "TOO_MANY_PLAYERS", "NOT_HOST", "ALREADY_IN_ROOM", "INVALID_OPTIONS",
+  "NOT_ENOUGH_PLAYERS", "NOT_ALL_READY", "NOT_ROLL_PHASE", "NOT_MOVE_PHASE", "ILLEGAL_MOVE", "STALE_MOVE",
 ]);
 
 // PostgREST / Postgres codes meaning "this table or function doesn't exist" — i.e. a migration hasn't been run.
@@ -98,6 +105,12 @@ export const ERROR_COPY: Record<ErrorCode, { title: string; body: string }> = {
   NOT_HOST: { title: "Host only", body: "Only the host can change the table." },
   ALREADY_IN_ROOM: { title: "Already here", body: "They're already at this table." },
   INVALID_OPTIONS: { title: "Invalid option", body: "Pick 2, 3 or 4 players and Classic or Quick." },
+  NOT_ENOUGH_PLAYERS: { title: "Need more players", body: "At least two players are needed to start." },
+  NOT_ALL_READY: { title: "Not everyone is ready", body: "Wait until every player has pressed Ready." },
+  NOT_ROLL_PHASE: { title: "Move first", body: "Pick a token to move before rolling again." },
+  NOT_MOVE_PHASE: { title: "Roll first", body: "Roll the dice before moving." },
+  ILLEGAL_MOVE: { title: "Can't move that token", body: "That token can't move with this roll." },
+  STALE_MOVE: { title: "Already played", body: "That move was already made." },
   NOT_SET_UP: { title: "Not set up yet", body: "This feature isn't set up on the server yet. A database migration needs to be run." },
   NETWORK: { title: "You're offline", body: "Check your connection and try again." },
   UNKNOWN: { title: "Something went wrong", body: "Please try again." },

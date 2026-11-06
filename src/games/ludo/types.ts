@@ -1,3 +1,5 @@
+import type { LudoEvent, LudoState } from "./engine";
+
 export type LudoColor = "red" | "green" | "yellow" | "blue";
 export type LudoMode = "classic" | "quick";
 
@@ -17,4 +19,21 @@ export interface LudoSeat {
   ready: boolean;
   joined_at: string;
   left_at: string | null;
+}
+
+/** ludo_games row (state follows src/games/ludo/engine.ts). */
+export interface LudoGameRow {
+  id: string;
+  room_id: string;
+  status: "playing" | "finished" | "abandoned";
+  mode: LudoMode;
+  /** colour → player id */
+  seats: Partial<Record<LudoColor, string>>;
+  state: LudoState;
+  last_roll: number | null;
+  last_events: LudoEvent[];
+  /** Bumped by every roll/move; actions send the one they saw (double taps are refused). */
+  seq: number;
+  started_at: string;
+  ended_at: string | null;
 }

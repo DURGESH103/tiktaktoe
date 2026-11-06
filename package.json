@@ -17,7 +17,7 @@
     "e2e:couple": "node scripts/e2e-couple.mjs",
     "check:memories": "node scripts/check-memories.mjs",
     "prebuild": "node scripts/check-secrets.mjs",
-    "e2e:ludo": "node scripts/e2e-ludo.mjs"
+    "e2e:ludo": "node --experimental-strip-types --no-warnings scripts/e2e-ludo.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
