@@ -41,19 +41,22 @@ const fromRow = (m: RoomMessage): ChatMessage => ({
 export function useRoomChat(
   roomId: string | null,
   me: string | null,
-  opponentId: string | null,
+  /** The other player, or everyone else at a group table (Ludo). */
+  opponentId: string | readonly string[] | null,
   /** Called only for messages that arrive live (not history loads), e.g. to play a sound. */
   onLiveMessage?: (m: ChatMessage) => void,
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [opponentTyping, setOpponentTyping] = useState(false);
+  /** Who is typing right now (the latest typer at a group table), or null. */
+  const [typingFrom, setTypingFrom] = useState<string | null>(null);
   /** Set when history can't be loaded (e.g. NOT_SET_UP: the chat migration hasn't been run). */
   const [loadError, setLoadError] = useState<{ code: ErrorCode; detail: string } | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const lastTypingSent = useRef(0);
   const typingTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const opponentRef = useRef(opponentId);
-  opponentRef.current = opponentId;
+  const others = opponentId === null ? [] : typeof opponentId === "string" ? [opponentId] : opponentId;
+  const othersRef = useRef(others);
+  othersRef.current = others;
   const onLiveRef = useRef(onLiveMessage);
   onLiveRef.current = onLiveMessage;
 
@@ -98,10 +101,10 @@ export function useRoomChat(
         if (m.sender_id !== me) onLiveRef.current?.(m);
       })
       .on("broadcast", { event: "typing" }, ({ payload }) => {
-        if (payload?.from !== opponentRef.current) return;
-        setOpponentTyping(true);
+        if (!othersRef.current.includes(payload?.from)) return;
+        setTypingFrom(payload.from);
         clearTimeout(typingTimer.current);
-        typingTimer.current = setTimeout(() => setOpponentTyping(false), TYPING_SHOW_FOR_MS);
+        typingTimer.current = setTimeout(() => setTypingFrom(null), TYPING_SHOW_FOR_MS);
       })
       // Catch up once the Postgres feed is really live (and after any reconnect).
       .on("system", {}, (m: { extension?: string; status?: string }) => {
@@ -125,10 +128,11 @@ export function useRoomChat(
   }, [roomId, me, load, upsert]);
 
   // A new message from them means they've stopped typing.
-  const lastFromOpponent = messages.findLast((m) => m.sender_id === opponentId)?.key;
+  const lastFromOthers = messages.findLast((m) => m.sender_id !== me && others.includes(m.sender_id))?.key;
   useEffect(() => {
-    setOpponentTyping(false);
-  }, [lastFromOpponent]);
+    setTypingFrom(null);
+  }, [lastFromOthers]);
+  const opponentTyping = typingFrom !== null;
 
   const deliver = useCallback(
     async (msg: ChatMessage) => {
@@ -188,5 +192,5 @@ export function useRoomChat(
     void channelRef.current.send({ type: "broadcast", event: "typing", payload: { from: me } });
   }, [me]);
 
-  return { messages, send, retry, sendTyping, opponentTyping, loadError };
+  return { messages, send, retry, sendTyping, opponentTyping, typingFrom, loadError };
 }

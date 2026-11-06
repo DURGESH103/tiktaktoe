@@ -23,11 +23,14 @@ export function MessageBubble({
   message,
   mine,
   sender,
+  showName,
   onRetry,
 }: {
   message: Pick<ChatMessage, "body" | "created_at" | "status" | "error" | "errorDetail" | "key">;
   mine: boolean;
   sender?: Pick<Player, "name" | "avatar" | "color">;
+  /** Group chat: their name above the bubble. */
+  showName?: boolean;
   onRetry?: (key: string) => void;
 }) {
   const failed = message.status === "failed";
@@ -41,6 +44,11 @@ export function MessageBubble({
     >
       {!mine && <AvatarBadge avatar={sender?.avatar ?? "❔"} color={sender?.color ?? "slate"} size="xs" className="mb-5" />}
       <div className={clsx("flex max-w-[78%] flex-col gap-1", mine ? "items-end" : "items-start")}>
+        {showName && !mine && (
+          <span aria-hidden className="px-1 text-[11px] font-semibold text-muted">
+            {sender?.name ?? "Player"}
+          </span>
+        )}
         <p
           className={clsx(
             "whitespace-pre-wrap break-words px-3.5 py-2 text-[15px] leading-snug [overflow-wrap:anywhere]",

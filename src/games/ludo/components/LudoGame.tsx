@@ -3,15 +3,17 @@
 import clsx from "clsx";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
+import { useSettings } from "@/components/providers/SettingsProvider";
 import { AvatarBadge } from "@/components/ui/AvatarBadge";
 import { Button } from "@/components/ui/Button";
 import { ERROR_COPY, type ErrorCode } from "@/lib/errors";
 import type { Player } from "@/types/db";
 import { HOME, legalMoves, type Color, type LudoEvent } from "../engine";
 import { COLOR_HEX } from "../lib/board";
+import { HOP_S, KNOCK_S } from "../lib/motion";
 import { COLOR_STYLE } from "../lib/seats";
 import type { LudoGameRow } from "../types";
-import { Dice } from "./Dice";
+import { Dice, ROLL_MS } from "./Dice";
 import { describe, LudoBoard } from "./LudoBoard";
 
 /** A Ludo game in progress (the board, the dice, whose turn, the last thing that happened). */
@@ -26,6 +28,7 @@ export function LudoGame({
   onResume,
   deadline,
   presentIds,
+  compactHeight = null,
 }: {
   game: LudoGameRow;
   me: string;
@@ -40,6 +43,8 @@ export function LudoGame({
   deadline: number | null;
   /** Who is connected right now (presence). */
   presentIds: Set<string> | null;
+  /** Height available while the chat sheet is open on a phone: just the board, dice and status. */
+  compactHeight?: number | null;
 }) {
   const offlineFor = useOfflineSince(Object.values(game.seats).filter((id): id is string => !!id), presentIds, me);
   const s = game.state;
@@ -48,6 +53,15 @@ export function LudoGame({
   const names = Object.fromEntries(s.colors.map((c) => [c, nameOf(c)])) as Record<Color, string>;
   const myTurn = !s.finished && s.turn === myColor;
   const movable = myTurn && s.phase === "move" && s.dice ? legalMoves(s, s.turn, s.dice) : [];
+
+  // The latest roll (for the dice tumble), and whether this update also moved a token, which then
+  // waits for the dice to land before it hops.
+  const hasRoll = game.last_events.some((e) => e.type === "roll");
+  const [rollSeq, setRollSeq] = useState(game.seq);
+  if (hasRoll && game.seq > rollSeq) setRollSeq(game.seq);
+  const moveDelay = hasRoll && game.last_events.some((e) => e.type === "move") ? ROLL_MS / 1000 : 0;
+  useGameSounds(game, myColor, moveDelay);
+  const compact = compactHeight != null;
 
   const away = new Set(game.away ?? []);
   const iAmAway = !!myColor && away.has(myColor);
@@ -64,7 +78,7 @@ export function LudoGame({
   return (
     <div className="flex flex-col gap-3">
       {/* Turn order + mini scoreboard (tokens home) */}
-      <ol aria-label="Players" className="grid grid-cols-2 gap-2 min-[420px]:grid-cols-4">
+      <ol aria-label="Players" className={clsx("grid grid-cols-2 gap-2 min-[420px]:grid-cols-4", compact && "hidden")}>
         {s.colors.map((c) => {
           const p = players[game.seats[c] ?? ""];
           const home = (s.tokens[c] ?? []).filter((x) => x === HOME).length;
@@ -109,7 +123,7 @@ export function LudoGame({
             {status}
           </motion.p>
         </AnimatePresence>
-        <p className="mt-1 min-h-5 text-sm text-muted">{describeEvents(game.last_events, nameOf)}</p>
+        {!compact && <p className="mt-1 min-h-5 text-sm text-muted">{describeEvents(game.last_events, nameOf)}</p>}
       </div>
 
       {iAmAway && !s.finished && (
@@ -121,18 +135,31 @@ export function LudoGame({
         </div>
       )}
 
-      <LudoBoard state={s} turnColor={s.finished ? null : s.turn} movableColor={movable.length ? myColor : null} movable={movable} onMove={onMove} names={names} />
+      <LudoBoard
+        key={game.id}
+        state={s}
+        turnColor={s.finished ? null : s.turn}
+        movableColor={movable.length ? myColor : null}
+        movable={movable}
+        onMove={onMove}
+        names={names}
+        delay={moveDelay}
+        maxSize={compact ? Math.max(180, compactHeight - 190) : undefined}
+      />
 
       <div className="flex items-center gap-3">
         <Dice
           value={game.last_roll}
+          rollKey={rollSeq}
           rolling={pending === "roll"}
           canRoll={myTurn && s.phase === "roll"}
           onRoll={onRoll}
           color={COLOR_HEX[s.turn]}
         />
         <div className="min-w-0 flex-1">
-          {movable.length > 0 ? (
+          {movable.length > 0 && compact ? (
+            <p className="text-sm font-semibold">Tap a glowing token to move it.</p>
+          ) : movable.length > 0 ? (
             <ul className="flex flex-col gap-1.5" aria-label="Tokens you can move">
               {movable.map((i) => {
                 const from = s.tokens[s.turn]![i];
@@ -159,6 +186,41 @@ export function LudoGame({
       )}
     </div>
   );
+}
+
+/**
+ * Sounds and vibration for what just happened, timed to the animation: the dice rattle, a tick per
+ * square hopped, the capture thud as the capturer lands, a chime when a token gets home, and a ping
+ * when it becomes your turn. Vibrates only for things that concern you.
+ */
+function useGameSounds(game: LudoGameRow, myColor: Color | null, moveDelay: number) {
+  const { feedback } = useSettings();
+  const lastSeq = useRef(game.seq);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  const s = game.state;
+  useEffect(() => {
+    if (game.seq <= lastSeq.current) return;
+    lastSeq.current = game.seq;
+    const later = (sec: number, fn: () => void) => timers.current.push(setTimeout(fn, sec * 1000));
+    let landed = 0;
+    for (const e of game.last_events) {
+      if (e.type === "roll") feedback("dice", e.color === myColor ? "dice" : null);
+      if (e.type !== "move") continue;
+      const steps = e.from === -1 ? 1 : e.to - e.from;
+      for (let k = 1; k <= Math.min(steps, 6); k++) later(moveDelay + k * HOP_S, () => feedback("hop", null));
+      landed = moveDelay + steps * HOP_S;
+      if (e.captured.length) {
+        const mine = e.color === myColor || e.captured.some((c) => c.color === myColor);
+        later(landed, () => feedback("capture", mine ? "capture" : null));
+        landed += KNOCK_S;
+      }
+      if (e.to === HOME) later(landed, () => feedback("home", e.color === myColor ? "home" : null));
+    }
+    if (!s.finished && s.turn === myColor && s.phase === "roll" && game.last_events.every((e) => e.type !== "roll" || e.color !== myColor)) {
+      later(landed + 0.1, () => feedback("turn", "turn"));
+    }
+  }, [game.seq, game.last_events, s.finished, s.turn, s.phase, myColor, moveDelay, feedback]);
 }
 
 /** One line about the last action, e.g. "Durgesh rolled 5 and captured your token! 💥". */

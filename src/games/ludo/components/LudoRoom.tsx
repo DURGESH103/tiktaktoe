@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactionBar, ReactionLayer } from "@/components/game/Reactions";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSettings } from "@/components/providers/SettingsProvider";
@@ -19,10 +19,12 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { ERROR_COPY } from "@/lib/errors";
 import { roomPath } from "@/lib/games";
 import { reactionLabel } from "@/lib/reactions";
+import { useRoomFlag } from "@/hooks/useRoomFlag";
 import { useLudoRoom } from "../hooks/useLudoRoom";
 import { activeSeats, allowedSeats, startState } from "../lib/seats";
 import type { LudoMode } from "../types";
 import { InviteFriendsSheet } from "./InviteFriendsSheet";
+import { LudoChat } from "./LudoChat";
 import { LudoGame } from "./LudoGame";
 import { LudoResults } from "./LudoResults";
 import { SeatGrid } from "./SeatGrid";
@@ -39,6 +41,12 @@ export function LudoRoom({ code }: { code: string }) {
   const [confirmLeave, setConfirmLeave] = useState(false);
   // Results of a finished game stay up until you go back to the lobby (per device).
   const [dismissed, setDismissed] = useState<string | null>(null);
+  // Group chat: "Mute" hides everyone else's messages and reactions (per device, per room).
+  const [hideOthers, setHideOthers] = useRoomFlag("hide-opponent", r.room?.id ?? null);
+  // Height left above the chat sheet on a phone (null = sheet closed): the board shrinks to fit.
+  const [aboveSheet, setAboveSheet] = useState<number | null>(null);
+  const onLayout = useCallback((h: number | null) => setAboveSheet(h), []);
+  const announce = useCallback((t: string) => setAnnouncement(t), []);
 
   // A Tic-Tac-Toe or Couple code opened here: send it to its own page.
   const isOtherGame = !!r.room && r.room.game_type !== "ludo";
@@ -48,6 +56,9 @@ export function LudoRoom({ code }: { code: string }) {
 
   const seated = useMemo(() => activeSeats(r.seats), [r.seats]);
   const mySeat = seated.find((s) => s.player_id === r.me);
+  const g = r.game;
+  const myTurn = !!g && g.status === "playing" && !g.state.finished && g.seats[g.state.turn] === r.me;
+  const reactions = hideOthers ? r.reactions.filter((x) => x.from === r.me) : r.reactions;
 
   // Someone sat down or left: a little sound + an announcement for screen readers.
   const prevIds = useRef<string[] | null>(null);
@@ -69,11 +80,11 @@ export function LudoRoom({ code }: { code: string }) {
     for (const x of r.reactions) {
       if (seen.current.has(x.id)) continue;
       seen.current.add(x.id);
-      if (x.from === r.me) continue;
+      if (x.from === r.me || hideOthers) continue;
       feedback("reaction", null);
       setAnnouncement(`${r.players[x.from]?.name ?? "Someone"} reacted ${reactionLabel(x.emoji)}.`);
     }
-  }, [r.reactions, r.me, r.players, feedback]);
+  }, [r.reactions, r.me, r.players, hideOthers, feedback]);
 
   useEffect(() => {
     if (!confirmLeave) return;
@@ -104,12 +115,36 @@ export function LudoRoom({ code }: { code: string }) {
         }
         extra={<MuteToggle />}
       />
-      <main className="safe-x mx-auto flex w-full max-w-md flex-col gap-4 pb-[calc(env(safe-area-inset-bottom)+2rem)] pt-2">
+      {/* While the chat sheet is open on a phone, the content is pinned above it. */}
+      <main
+        style={aboveSheet != null ? { height: aboveSheet } : undefined}
+        className={clsx(
+          "safe-x mx-auto flex w-full max-w-md flex-col gap-4",
+          aboveSheet != null
+            ? "fixed inset-x-0 top-0 z-30 overflow-y-auto overscroll-contain bg-bg pb-3 pt-[calc(env(safe-area-inset-top)+0.5rem)]"
+            : "pb-[calc(env(safe-area-inset-bottom)+5.5rem)] pt-2",
+        )}
+      >
         {children}
         <p className="sr-only" aria-live="polite" aria-atomic>
           {announcement}
         </p>
       </main>
+      {r.room && r.me && seated.some((s) => s.player_id === r.me) && (
+        <LudoChat
+          roomId={r.room.id}
+          me={r.me}
+          players={r.players}
+          otherIds={seated.map((s) => s.player_id).filter((id) => id !== r.me)}
+          hideOthers={hideOthers}
+          onHideOthers={setHideOthers}
+          readOnly={r.room.status === "abandoned"}
+          onAnnounce={announce}
+          onLayout={onLayout}
+          yourTurn={myTurn}
+          turnKey={r.game?.seq ?? 0}
+        />
+      )}
     </div>
   );
 
@@ -146,20 +181,39 @@ export function LudoRoom({ code }: { code: string }) {
             onResume={() => void r.resume()}
             deadline={r.deadline}
             presentIds={r.presentIds}
+            compactHeight={aboveSheet}
           />
-          <ReactionLayer reactions={r.reactions} me={r.me} />
+          <ReactionLayer reactions={reactions} me={r.me} />
         </div>
-        <ReactionBar onReact={r.react} />
-        <Button variant={confirmLeave ? "danger" : "ghost"} onClick={() => (confirmLeave ? leave() : setConfirmLeave(true))} className="mx-auto">
-          {confirmLeave ? "Tap again: leaving counts as last place" : "Leave game"}
-        </Button>
+        {aboveSheet == null && (
+          <>
+            <ReactionBar onReact={r.react} />
+            <Button variant={confirmLeave ? "danger" : "ghost"} onClick={() => (confirmLeave ? leave() : setConfirmLeave(true))} className="mx-auto">
+              {confirmLeave ? "Tap again: leaving counts as last place" : "Leave game"}
+            </Button>
+          </>
+        )}
       </>,
     );
   }
   // Results stay up even if the table closed meanwhile (e.g. the host left during the game).
   // ...only for people who played in it (someone who sits down afterwards goes straight to the lobby).
   if (game && game.status === "finished" && dismissed !== game.id && Object.values(game.seats).includes(r.me)) {
-    return shell(<LudoResults game={game} me={r.me} players={r.players} onBack={() => setDismissed(game.id)} />);
+    const tableOpen = r.room.status !== "abandoned" && seated.some((x) => x.player_id === r.me);
+    return shell(
+      <LudoResults
+        game={game}
+        me={r.me}
+        players={r.players}
+        tableOpen={tableOpen}
+        isHost={r.isHost}
+        onPlayAgain={() => {
+          setDismissed(game.id);
+          if (!r.isHost) void r.setReady(true);
+        }}
+        onBack={() => setDismissed(game.id)}
+      />,
+    );
   }
 
   if (r.room.status === "abandoned") {
@@ -198,7 +252,7 @@ export function LudoRoom({ code }: { code: string }) {
           presentIds={r.presentIds}
           onInvite={() => setInviteOpen(true)}
         />
-        <ReactionLayer reactions={r.reactions} me={r.me} />
+        <ReactionLayer reactions={reactions} me={r.me} />
       </div>
 
       {r.isHost ? (

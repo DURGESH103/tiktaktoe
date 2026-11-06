@@ -4,7 +4,9 @@
 // join by code and by link, seats and colours, table size and mode, Ready/Start, a full table,
 // leaving, reactions and the link preview. Stage 2: a full 2-player game with scripted dice
 // (test-only, via the service key in .env.test.local) to a capture and a win; the server state is
-// checked against the rules engine after every step. Test rooms and dice rows are deleted at the end.
+// checked against the rules engine after every step. Stage 4 (woven into stages 2–3): 3D dice, hops,
+// knock-back, the podium and "Play again", group chat for three, and the board above the chat sheet.
+// Test rooms and dice rows are deleted at the end.
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright-core";
 import { initialState, move as engineMove, roll as engineRoll, legalMoves, distinctMoves } from "../src/games/ludo/engine.ts";
@@ -175,13 +177,29 @@ try {
   };
   let g = await gameRow();
   let mismatch = 0;
+  let checkedDice = false;
+  let checkedHop = false;
   for (const [n, st] of plan.steps.entries()) {
     const p = page[st.color];
     await p.getByRole("button", { name: "Roll the dice" }).click();
     g = await waitSeq(g.seq);
+    if (!checkedDice) {
+      checkedDice = true;
+      const shown = async (q) => q.locator("[data-testid=dice-cube]").getAttribute("data-value");
+      for (let i = 0; i < 50 && ((await shown(A)) !== String(g.last_roll) || (await shown(B)) !== String(g.last_roll)); i++) await A.waitForTimeout(100);
+      ok((await shown(A)) === String(g.last_roll) && (await shown(B)) === String(g.last_roll), `3D dice: both screens land on the server's roll (${g.last_roll})`);
+    }
     if (st.token !== null) {
       await p.getByRole("button", { name: new RegExp(`^Move token ${st.token + 1}:`) }).click();
       g = await waitSeq(g.seq);
+      const pos = g.state.tokens[st.color][st.token];
+      const other = st.color === "red" ? B : A;
+      if (!checkedHop && pos >= 2 && pos < 56) {
+        checkedHop = true;
+        const tok = other.locator(`[data-token="${st.color}-${st.token}"][data-pos="${pos}"]`);
+        await tok.waitFor({ state: "attached" });
+        ok((await tok.getAttribute("data-motion")) === "hop", "tokens hop square by square on the other player's screen too");
+      }
     }
     if (JSON.stringify(sortKeys(g.state)) !== JSON.stringify(sortKeys(st.after))) {
       if (!mismatch++) console.log(`    step ${n}: server ${JSON.stringify(g.state)}\n             plan   ${JSON.stringify(st.after)}`);
@@ -190,26 +208,51 @@ try {
       await B.getByText(/captured your token! 💥/).waitFor();
       await A.getByText(/captured Durgesh's token! 💥/).waitFor();
       ok(true, "capture: Rahul lands on Durgesh's token; both screens show it, the token goes back to the yard");
+      const knocked = await B.locator('[data-token^="yellow-"][data-motion="knock"]').count();
+      ok(knocked === 1, "capture knock-back: the captured token flies back to its yard");
     }
   }
   ok(mismatch === 0, `server state matched the rules engine after every one of ${plan.steps.length} rolls`);
   await A.getByRole("heading", { name: "You win!" }).waitFor();
   await B.getByRole("heading", { name: "Rahul wins!" }).waitFor();
   ok((await B.getByRole("list", { name: "Final standings" }).innerText()).replace(/\s+/g, " ").includes("Rahul"), "win: results on both screens (Rahul 1st, Durgesh 2nd)");
+  ok((await B.getByLabel("1st place").count()) === 1 && (await B.getByLabel("2nd place").count()) === 1, "winner podium: 1st and 2nd places");
   const { data: leftDice } = await admin.from("ludo_test_dice").select("id").eq("room_id", roomRow.id);
   ok(leftDice.length === 0, "every scripted roll was used exactly once");
   await A.getByRole("button", { name: "Back to the table" }).click();
   await A.getByText("Waiting for 1 player to be ready").waitFor();
   ok(true, "after the game the table is back in the lobby (guests press Ready again)");
+  await B.getByRole("button", { name: "Play again" }).click();
+  await A.getByText("Everyone's ready!").waitFor();
+  ok(true, "\"Play again\" takes a guest back to the table, ready for the next game");
 
   console.log("Stage 3: 3 players, turn timer, away, I'm back, leaving mid-game");
-  await B.getByRole("button", { name: "Back to the table" }).click();
   await A.getByRole("radio", { name: "3" }).click();
   await C.goto(`${BASE}/ludo/${code2}`);
   await seat(A, "Green").waitFor();
   await B.getByRole("button", { name: "I'm ready" }).click();
   await C.getByRole("button", { name: "I'm ready" }).click();
   await A.getByText("Everyone's ready!").waitFor();
+
+  console.log("Stage 4: group chat for the whole table");
+  await A.getByRole("button", { name: /^Open chat/ }).click();
+  await A.getByPlaceholder("Message…").fill("Hi table 👋");
+  await A.getByRole("button", { name: "Send message" }).click();
+  await A.getByRole("button", { name: "Close chat" }).click();
+  for (const q of [B, C]) {
+    await q.getByRole("button", { name: "Open chat, 1 unread message" }).waitFor({ timeout: 10_000 });
+    await q.getByRole("button", { name: /^Open chat/ }).click();
+    await q.getByRole("log", { name: "Messages" }).getByText("Hi table 👋").waitFor();
+  }
+  await C.getByPlaceholder("Message…").fill("Ready when you are");
+  await C.getByRole("button", { name: "Send message" }).click();
+  await B.getByRole("log", { name: "Messages" }).getByText("Ready when you are").waitFor();
+  ok((await B.getByRole("log", { name: "Messages" }).innerText()).includes("Priya"), "group chat: all three players see every message, with the sender's name");
+  await B.getByRole("button", { name: "Close chat" }).click();
+  await C.getByRole("button", { name: "Close chat" }).click();
+  await A.getByRole("button", { name: "Open chat, 1 unread message" }).waitFor({ timeout: 10_000 });
+  ok(true, "unread badge counts messages from anyone at the table");
+
   // Rounds 1–4: red's turn runs out (auto 2s), green and yellow roll 2. Round 5: red and green
   // roll 2, then yellow leaves. Finally red's last roll (1).
   await admin.from("ludo_test_dice").insert([...Array(14).fill(2), 1].map((value) => ({ room_id: roomRow.id, value })));
@@ -256,6 +299,15 @@ try {
 
   // Priya leaves on her own turn: she's skipped and ranked last.
   await C.getByText("Your turn — roll the dice!").waitFor();
+  // (First: with the chat open, the board and dice stay visible above the sheet.)
+  await C.getByRole("button", { name: /^Open chat/ }).click();
+  await C.getByRole("dialog", { name: "Table chat" }).waitFor();
+  await C.waitForTimeout(600);
+  const boardBox = await C.getByRole("img", { name: "Ludo board" }).boundingBox();
+  const diceBox = await C.getByRole("button", { name: "Roll the dice" }).boundingBox();
+  const sheetBox = await C.getByRole("dialog", { name: "Table chat" }).boundingBox();
+  ok(boardBox && diceBox && sheetBox && boardBox.y >= 0 && diceBox.y + diceBox.height <= sheetBox.y + 1, "chat open: the whole board and the dice stay visible above the sheet");
+  await C.getByRole("button", { name: "Close chat" }).click();
   await C.getByRole("button", { name: "Leave game" }).click();
   await C.getByRole("button", { name: "Tap again: leaving counts as last place" }).click();
   await C.waitForURL(`${BASE}/`);
@@ -267,7 +319,11 @@ try {
   await A.getByRole("button", { name: "Roll the dice" }).click();
   await A.getByRole("heading", { name: "You win!" }).waitFor();
   const standings = (await B.getByRole("list", { name: "Final standings" }).innerText()).replace(/\s+/g, " ");
-  ok(/Rahul.*You.*Priya/.test(standings), `standings: Rahul 1st, Durgesh 2nd, Priya (left) last — "${standings.slice(0, 60)}…"`);
+  const placeOf = async (label) => (await B.getByLabel(label).locator("xpath=ancestor::li[1]").innerText()).replace(/\s+/g, " ");
+  ok(
+    (await placeOf("1st place")).includes("Rahul") && (await placeOf("2nd place")).includes("You") && (await placeOf("3rd place")).includes("Priya"),
+    `podium: Rahul 1st, Durgesh 2nd, Priya (left) 3rd — "${standings.slice(0, 60)}…"`,
+  );
 } catch (e) {
   failures++;
   console.log("  ✗ FAIL", e.message.split("\n")[0]);

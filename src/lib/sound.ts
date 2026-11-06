@@ -3,7 +3,7 @@
  * Browsers only allow audio after a user gesture; unlockAudio() is called on the first tap.
  */
 
-export type SoundName = "place" | "opponent" | "win" | "lose" | "draw" | "join" | "reaction" | "message" | "error";
+export type SoundName = "place" | "opponent" | "win" | "lose" | "draw" | "join" | "reaction" | "message" | "error" | "dice" | "hop" | "capture" | "home" | "turn";
 
 type Tone = {
   freq: number;
@@ -33,6 +33,18 @@ const SOUNDS: Record<SoundName, Tone[]> = {
     { freq: 988, dur: 0.09, type: "sine", gain: 0.1, at: 0.07 },
   ],
   error: [{ freq: 200, to: 150, dur: 0.14, type: "square", gain: 0.06 }],
+  // Ludo
+  dice: [0, 0.07, 0.15, 0.24, 0.36, 0.5].map((at, i) => ({ freq: 260 + ((i * 137) % 220), to: 180, dur: 0.045, type: "square" as const, gain: 0.05, at })),
+  hop: [{ freq: 700, to: 820, dur: 0.05, type: "sine", gain: 0.07 }],
+  capture: [
+    { freq: 180, to: 70, dur: 0.22, type: "triangle", gain: 0.2 },
+    { freq: 1200, to: 500, dur: 0.12, type: "sawtooth", gain: 0.05, at: 0.02 },
+  ],
+  home: [659, 880, 1319].map((f, i) => ({ freq: f, dur: 0.14, type: "sine" as const, gain: 0.13, at: i * 0.08 })),
+  turn: [
+    { freq: 587, dur: 0.08, type: "triangle", gain: 0.12 },
+    { freq: 880, dur: 0.12, type: "triangle", gain: 0.12, at: 0.08 },
+  ],
 };
 
 let ctx: AudioContext | null = null;

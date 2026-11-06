@@ -38,6 +38,8 @@ interface Props {
   /** "Your turn" chip in the header; `turnKey` changes when a move arrives, which makes it flash. */
   yourTurn: boolean;
   turnKey: number;
+  /** Group table (Ludo): senders looked up by id, names shown on bubbles; "Mute" hides everyone else. */
+  group?: { players: Record<string, Player>; typingFrom: string | null };
 }
 
 /**
@@ -123,6 +125,7 @@ function ChatBody({
   loadError,
   yourTurn,
   turnKey,
+  group,
 }: Props) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +133,8 @@ function ChatBody({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const oppName = opponent?.name ?? "Opponent";
+  const oppName = group ? "Everyone else" : (opponent?.name ?? "Opponent");
+  const typingName = group ? (group.players[group.typingFrom ?? ""]?.name ?? "Someone") : oppName;
 
   const visible = hideOpponent ? messages.filter((m) => m.sender_id === me) : messages;
   const hiddenCount = messages.length - visible.length;
@@ -176,10 +180,10 @@ function ChatBody({
     <>
       {/* Header */}
       <div className="flex shrink-0 items-center gap-3 px-4 pb-2 lg:pt-3">
-        {opponent && <AvatarBadge avatar={opponent.avatar} color={opponent.color} size="sm" />}
+        {opponent && !group && <AvatarBadge avatar={opponent.avatar} color={opponent.color} size="sm" />}
         <div className="min-w-0 flex-1">
           <h2 id="chat-title" ref={headingRef} tabIndex={-1} className="truncate font-display text-lg font-semibold leading-tight outline-none">
-            Chat with {oppName}
+            {group ? "Table chat" : `Chat with ${oppName}`}
           </h2>
           <AnimatePresence>
             {yourTurn && (
@@ -245,11 +249,18 @@ function ChatBody({
       >
         {visible.length === 0 && (
           <li className="m-auto max-w-[16rem] py-4 text-center text-sm text-muted">
-            Say hi 👋 Messages are saved with this game and only you two can see them.
+            Say hi 👋 Messages are saved with this game and only {group ? "the players at this table" : "you two"} can see them.
           </li>
         )}
         {visible.map((m) => (
-          <MessageBubble key={m.key} message={m} mine={m.sender_id === me} sender={m.sender_id === me ? undefined : opponent} onRetry={onRetry} />
+          <MessageBubble
+            key={m.key}
+            message={m}
+            mine={m.sender_id === me}
+            sender={m.sender_id === me ? undefined : group ? group.players[m.sender_id] : opponent}
+            showName={!!group}
+            onRetry={onRetry}
+          />
         ))}
       </ol>
 
@@ -262,7 +273,7 @@ function ChatBody({
             className="flex shrink-0 items-center gap-1.5 px-5 pb-1 text-xs text-muted"
             aria-live="polite"
           >
-            <TypingDots /> {oppName} is typing…
+            <TypingDots /> {typingName} is typing…
           </motion.p>
         )}
       </AnimatePresence>

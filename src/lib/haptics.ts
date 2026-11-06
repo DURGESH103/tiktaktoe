@@ -8,6 +8,11 @@ export const HAPTICS = {
   join: [20, 60, 20],
   message: 15,
   error: [25, 30, 25],
+  // Ludo
+  dice: [10, 40, 10, 40, 18],
+  capture: [50, 40, 80],
+  home: [20, 50, 20, 50, 40],
+  turn: 20,
 } satisfies Record<string, number | number[]>;
 
 export type HapticName = keyof typeof HAPTICS;
