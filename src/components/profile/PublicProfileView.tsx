@@ -6,6 +6,7 @@ import Link from "next/link";
 import { FriendButton } from "@/components/friends/FriendButton";
 import { ResultPill } from "@/components/history/ResultPill";
 import { StatsGrid } from "@/components/history/StatsGrid";
+import { LudoStatsGrid } from "@/games/ludo/components/LudoStats";
 import { AvatarBadge } from "@/components/ui/AvatarBadge";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -68,6 +69,15 @@ export function PublicProfileView({
       )}
 
       <StatsGrid stats={stats} title={`${player.name}'s stats`} />
+
+      {profile.ludo && profile.ludo.games > 0 && (
+        <section aria-labelledby={`${headingId ?? "profile"}-ludo`} className="flex flex-col gap-2">
+          <h3 id={`${headingId ?? "profile"}-ludo`} className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
+            Ludo 🎲
+          </h3>
+          <LudoStatsGrid stats={profile.ludo} title={`${player.name}'s Ludo stats`} />
+        </section>
+      )}
 
       <section aria-labelledby={`${headingId ?? "profile"}-recent`} className="flex flex-col gap-2">
         <h3 id={`${headingId ?? "profile"}-recent`} className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">

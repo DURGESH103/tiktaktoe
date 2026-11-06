@@ -102,7 +102,7 @@ export function InviteFriendsSheet({
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-semibold">{f.player.name}</span>
-                      <span className="block text-xs text-muted">{invited ? "Invite sent…" : statusLabel(status, f.last_seen_at)}</span>
+                      <span className="block text-xs text-muted">{invited ? "Invite sent…" : statusLabel(status, f.last_seen_at, undefined, social!.gameOf(f.player.handle))}</span>
                     </span>
                   </label>
                 </li>

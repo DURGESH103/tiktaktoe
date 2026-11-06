@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { useEffect } from "react";
 import { useSettings } from "@/components/providers/SettingsProvider";
 import { AvatarBadge } from "@/components/ui/AvatarBadge";
@@ -135,6 +136,9 @@ export function LudoResults({
             Back to the table
           </Button>
         )}
+        <Link href="/history?game=ludo" className="mx-auto min-h-12 content-center rounded-xl px-3 text-sm font-medium text-accent hover:underline">
+          Your Ludo stats &amp; history
+        </Link>
       </div>
     </div>
   );

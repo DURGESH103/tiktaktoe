@@ -65,10 +65,19 @@ export function sortFriends(friends: FriendEntry[], statusOf: (handle: string) =
   });
 }
 
-export function statusLabel(status: FriendStatus, lastSeen: string | null, now = Date.now()): string {
+const PLAYING: Record<GameType, string> = { tictactoe: "Playing Tic-Tac-Toe", couple: "Playing Couple Challenge", ludo: "Playing Ludo" };
+
+/** Which game a page is (from its path), for presence: "Playing Ludo". */
+export function gameFromPath(pathname: string | null): GameType | null {
+  const m = /^\/(game|couple|ludo)\//.exec(pathname ?? "");
+  return m ? ({ game: "tictactoe", couple: "couple", ludo: "ludo" } as const)[m[1] as "game" | "couple" | "ludo"] : null;
+}
+
+/** `game`: which game a friend is in (from presence), so "In a game" becomes e.g. "Playing Ludo". */
+export function statusLabel(status: FriendStatus, lastSeen: string | null, now = Date.now(), game: GameType | null = null): string {
   if (status === "online") return "Online";
   if (status === "away") return "Away";
-  if (status === "in_game") return "In a game";
+  if (status === "in_game") return game ? PLAYING[game] : "In a game";
   return lastSeen ? `Last seen ${relativeTime(lastSeen, now)}` : "Offline";
 }
 

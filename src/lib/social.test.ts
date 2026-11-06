@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canChallenge, relationFor, secondsLeft, sortFriends, statusLabel, type FriendEntry, type FriendsData, type FriendStatus } from "./social";
+import { canChallenge, gameFromPath, relationFor, secondsLeft, sortFriends, statusLabel, type FriendEntry, type FriendsData, type FriendStatus } from "./social";
 
 const p = (handle: string, name = handle) => ({ handle, name, avatar: "😎", color: "violet" });
 const f = (handle: string, last_seen_at: string | null = null): FriendEntry => ({
@@ -29,6 +29,13 @@ describe("statusLabel / canChallenge", () => {
     expect(statusLabel("in_game", null)).toBe("In a game");
     expect(statusLabel("offline", "2026-01-01T12:00:00Z", now)).toBe("Last seen 5 minutes ago");
     expect(statusLabel("offline", null)).toBe("Offline");
+  });
+
+  it("names the game a friend is playing (from presence)", () => {
+    expect(statusLabel("in_game", null, undefined, "ludo")).toBe("Playing Ludo");
+    expect(statusLabel("in_game", null, undefined, "tictactoe")).toBe("Playing Tic-Tac-Toe");
+    expect(statusLabel("online", null, undefined, "ludo")).toBe("Online"); // only while in a game
+    expect(["/ludo/AB12C", "/game/AB12C", "/couple/AB12C", "/history", null].map(gameFromPath)).toEqual(["ludo", "tictactoe", "couple", null, null]);
   });
 
   it("only allows challenging friends who are online or away", () => {

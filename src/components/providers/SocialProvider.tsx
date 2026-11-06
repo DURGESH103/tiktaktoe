@@ -6,7 +6,7 @@ import { ChallengeCards } from "@/components/friends/ChallengeCards";
 import { Toaster, type Toast } from "@/components/ui/Toaster";
 import { toErrorCode, type ErrorCode } from "@/lib/errors";
 import { roomPath } from "@/lib/games";
-import { canChallenge, relationFor, secondsLeft, type Challenge, type FriendsData, type FriendStatus, type PresenceState, type Relation } from "@/lib/social";
+import { canChallenge, gameFromPath, relationFor, secondsLeft, type Challenge, type FriendsData, type FriendStatus, type PresenceState, type Relation } from "@/lib/social";
 import { getSupabase } from "@/lib/supabase/client";
 import type { GameType } from "@/types/db";
 import { useAuth } from "./AuthProvider";
@@ -22,6 +22,8 @@ interface Social {
   refresh: () => void;
   /** Live status of a friend (anyone else always reads as offline). */
   statusOf: (handle: string) => FriendStatus;
+  /** Which game a friend who's in a game is playing (null if unknown, e.g. an older app version). */
+  gameOf: (handle: string) => GameType | null;
   relationOf: (handle: string) => Relation;
   incomingCount: number;
   challenges: Challenge[];
@@ -64,6 +66,7 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [clockOffset, setClockOffset] = useState(0);
   const [presence, setPresence] = useState<Record<string, PresenceState>>({});
+  const [presenceGame, setPresenceGame] = useState<Record<string, GameType>>({});
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [watching, setWatching] = useState<Set<string>>(new Set());
   const prevData = useRef<FriendsData | null>(null);
@@ -142,24 +145,31 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
   const [, forceVisibility] = useState(0);
   const myStateRef = useRef(myState);
   myStateRef.current = myState;
+  const myGame = myState === "in_game" ? gameFromPath(pathname) : null;
+  const myGameRef = useRef(myGame);
+  myGameRef.current = myGame;
 
   useEffect(() => {
     if (!myHandle) return;
     const sb = getSupabase();
     const ch = sb.channel(PRESENCE_CHANNEL, { config: { presence: { key: myHandle } } });
     ch.on("presence", { event: "sync" }, () => {
-      const state = ch.presenceState<{ status: PresenceState }>();
+      const state = ch.presenceState<{ status: PresenceState; game?: GameType | null }>();
       const next: Record<string, PresenceState> = {};
+      const games: Record<string, GameType> = {};
       for (const [handle, metas] of Object.entries(state)) {
         // Several tabs/devices: the "most available" one wins.
         const statuses = metas.map((m) => m.status);
         next[handle] = statuses.includes("online") ? "online" : statuses.includes("away") ? "away" : "in_game";
+        const game = metas.find((m) => m.status === "in_game" && m.game)?.game;
+        if (game) games[handle] = game;
       }
       setPresence(next);
+      setPresenceGame(games);
     }).subscribe((status) => {
       if (status !== "SUBSCRIBED") return;
       lobbyRef.current = ch;
-      void ch.track({ status: myStateRef.current });
+      void ch.track({ status: myStateRef.current, game: myGameRef.current });
     });
     const onVisibility = () => forceVisibility((n) => n + 1);
     document.addEventListener("visibilitychange", onVisibility);
@@ -173,8 +183,8 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
   // Re-announce whenever my state changes (entering a game, switching tabs…). Before the channel has
   // joined there's nothing to do: the subscribe callback above announces the current state.
   useEffect(() => {
-    void lobbyRef.current?.track({ status: myState });
-  }, [myState]);
+    void lobbyRef.current?.track({ status: myState, game: myGame });
+  }, [myState, myGame]);
 
   // ------------------------------------------------------------ last seen
   useEffect(() => {
@@ -214,6 +224,7 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
     (handle: string): FriendStatus => (friendHandles.has(handle) ? (presence[handle] ?? "offline") : "offline"),
     [friendHandles, presence],
   );
+  const gameOf = useCallback((handle: string) => (statusOf(handle) === "in_game" ? (presenceGame[handle] ?? null) : null), [statusOf, presenceGame]);
   const relationOf = useCallback((handle: string) => relationFor(handle, data, myHandle ?? undefined), [data, myHandle]);
 
   // ------------------------------------------------------------ notifications from changes
@@ -349,6 +360,7 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
       error,
       refresh: () => void refreshFriends(),
       statusOf,
+      gameOf,
       relationOf,
       incomingCount: data?.incoming.length ?? 0,
       challenges,
@@ -366,7 +378,7 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
       cancelChallenge,
       toast,
     }),
-    [data, error, refreshFriends, statusOf, relationOf, challenges, clockOffset, watching, toggleWatch, sendRequest, respondRequest, cancelRequest, removeFriend, block, unblock, challenge, respondChallenge, cancelChallenge, toast],
+    [data, error, refreshFriends, statusOf, gameOf, relationOf, challenges, clockOffset, watching, toggleWatch, sendRequest, respondRequest, cancelRequest, removeFriend, block, unblock, challenge, respondChallenge, cancelChallenge, toast],
   );
 
   return (

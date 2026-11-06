@@ -85,6 +85,35 @@ export interface PublicProfile {
   stats: PlayerStats;
   head_to_head: HeadToHeadRecord | null;
   recent: { opponent: PublicPlayer | null; result: Result; ended_at: string; moves: number }[];
+  /** Ludo stats (missing until the 0018 migration has been run). */
+  ludo?: LudoStats;
+}
+
+/** Ludo stats (see _ludo_stats in the 0018 migration). Podium = top 3, never last place. */
+export interface LudoStats {
+  games: number;
+  wins: number;
+  podiums: number;
+  captures: number;
+  current_win_streak: number;
+  best_win_streak: number;
+  last_played_at: string | null;
+}
+
+/** One finished Ludo game from my point of view, with everyone's placing. */
+export interface LudoHistoryGame {
+  game_id: string;
+  ended_at: string;
+  mode: "classic" | "quick";
+  place: number;
+  players: number;
+  captures: number;
+  standings: { player: PublicPlayer | null; color: "red" | "green" | "yellow" | "blue"; place: number; forfeited: boolean; captures: number }[];
+}
+
+export interface MyLudo {
+  stats: LudoStats;
+  games: LudoHistoryGame[];
 }
 
 export interface MyStats {

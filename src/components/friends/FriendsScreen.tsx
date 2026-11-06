@@ -125,7 +125,7 @@ function FriendRow({ f, onMenu }: { f: FriendEntry; onMenu: () => void }) {
         <span className="min-w-0">
           <span className="block truncate font-semibold">{f.player.name}</span>
           <span className="block truncate text-xs text-muted">
-            <span className={clsx(status !== "offline" && "font-medium text-fg")}>{statusLabel(status, f.last_seen_at)}</span>
+            <span className={clsx(status !== "offline" && "font-medium text-fg")}>{statusLabel(status, f.last_seen_at, undefined, social.gameOf(f.player.handle))}</span>
             {total > 0 && (
               <span aria-label={`, you ${wins} wins, ${losses} losses, ${draws} draws`}>
                 {" · "}

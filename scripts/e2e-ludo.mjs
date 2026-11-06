@@ -226,6 +226,33 @@ try {
   await A.getByRole("button", { name: "Back to the table" }).click();
   await A.getByText("Waiting for 1 player to be ready").waitFor();
   ok(true, "after the game the table is back in the lobby (guests press Ready again)");
+
+  console.log("Stage 5: stats, history, profiles, \"Playing Ludo\"");
+  // Stats and history need the 0018 migration on the live database; "Playing Ludo" doesn't.
+  const probe = await admin.rpc("get_my_ludo");
+  const statsReady = !(probe.error && /PGRST202|schema cache/.test(`${probe.error.code} ${probe.error.message}`));
+  if (statsReady) {
+    await B.getByRole("link", { name: "Your Ludo stats & history" }).click();
+    await B.waitForURL(/\/history\?game=ludo/);
+    const games = B.getByRole("list", { name: "Ludo games" });
+    await games.waitFor();
+    const hist = (await games.innerText()).replace(/\s+/g, " ");
+    ok(/You finished 2nd/.test(hist) && /1st.*Rahul.*2nd.*Durgesh/.test(hist), `history: the game with both placings ("${hist.slice(0, 70)}…")`);
+    const myStats = (await B.getByRole("region", { name: "Your Ludo stats" }).innerText()).replace(/\s+/g, " ");
+    ok(/Games played 1\b/.test(myStats) && /1st places 🥇 0\b/.test(myStats), `stats: 1 game, 0 first places for Durgesh ("${myStats.slice(0, 60)}…")`);
+  } else {
+    console.log("  – skipped history/stats/profile checks: run supabase/migrations/20261104001800_ludo_stats.sql first");
+  }
+  await B.goto(`${BASE}/friends`);
+  await B.getByText("Playing Ludo").waitFor(); // Rahul is at the Ludo table
+  ok(true, "friends list: Rahul shows \"Playing Ludo\"");
+  if (statsReady) {
+    const { data: host } = await admin.from("rooms").select("player_x, players:player_x(handle)").eq("code", code2).single();
+    await B.goto(`${BASE}/u/${host.players.handle}`);
+    const prof = (await B.getByRole("region", { name: "Rahul's Ludo stats" }).innerText()).replace(/\s+/g, " ");
+    ok(/1st places 🥇 1\b/.test(prof) && /Tokens captured 💥 [1-9]/.test(prof), `public profile: Rahul's Ludo stats ("${prof.slice(0, 70)}…")`);
+  }
+  await B.goto(`${BASE}/ludo/${code2}`); // back to the results (still not dismissed)
   await B.getByRole("button", { name: "Play again" }).click();
   await A.getByText("Everyone's ready!").waitFor();
   ok(true, "\"Play again\" takes a guest back to the table, ready for the next game");
