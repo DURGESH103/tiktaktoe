@@ -23,27 +23,35 @@ export function useCoupleSession(me: string | null) {
   const questionsRef = useRef(questions);
   questionsRef.current = questions;
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Reloads can overlap (a realtime event plus my own refresh); only the newest one may apply.
+  const loadSeq = useRef(0);
 
   /** Reloads the latest session with its rounds, questions and visible answers. */
   const load = useCallback(async (roomId: string) => {
     roomIdRef.current = roomId;
+    const seq = ++loadSeq.current;
     const sb = getSupabase();
     const { data: s } = await sb.from("couple_sessions").select("*").eq("room_id", roomId).order("started_at", { ascending: false }).limit(1).maybeSingle();
-    setSession((s as CoupleSession | null) ?? null);
+    if (seq !== loadSeq.current) return;
     if (!s) {
+      setSession(null);
       setRounds([]);
       setAnswers([]);
       return;
     }
     const { data: rs } = await sb.from("couple_rounds").select("*").eq("session_id", s.id).order("idx");
     const list = (rs as CoupleRound[] | null) ?? [];
-    setRounds(list);
     const need = list.map((r) => r.question_id).filter((id) => !questionsRef.current[id]);
     const [qs, as] = await Promise.all([
       need.length ? sb.from("couple_questions").select("*").in("id", need) : Promise.resolve({ data: [] }),
       list.length ? sb.from("couple_answers").select("*").in("round_id", list.map((r) => r.id)) : Promise.resolve({ data: [] }),
     ]);
+    if (seq !== loadSeq.current) return;
+    // Session, rounds and answers are applied together: a round must never show as revealed before the
+    // partner's answer is here (it briefly showed both guesses as wrong).
     if (qs.data?.length) setQuestions((cur) => ({ ...cur, ...Object.fromEntries((qs.data as CoupleQuestion[]).map((q) => [q.id, q])) }));
+    setSession(s as CoupleSession);
+    setRounds(list);
     setAnswers((as.data as CoupleAnswer[] | null) ?? []);
   }, []);
 

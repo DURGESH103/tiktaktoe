@@ -65,7 +65,12 @@ export function useMemories(roomId: string | null, playerX: string | null, playe
     const sb = getSupabase();
     const ch = sb
       .channel(`memories:${lo}:${hi}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "couple_memories", filter: `user_a=eq.${lo}` }, () => void load())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "couple_memories", filter: `user_a=eq.${lo}` }, () => void load())
+      // Realtime can't filter DELETE events, and they only carry the row's id: drop it if it's ours.
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "couple_memories" }, (p) => {
+        const id = (p.old as { id?: string } | null)?.id;
+        if (id) setMemories((cur) => cur?.filter((m) => m.id !== id) ?? cur);
+      })
       .subscribe();
     return () => {
       void sb.removeChannel(ch);
