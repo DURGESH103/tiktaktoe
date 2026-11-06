@@ -185,12 +185,15 @@ try {
     g = await waitSeq(g.seq);
     if (!checkedDice) {
       checkedDice = true;
-      const shown = async (q) => q.locator("[data-testid=dice-cube]").getAttribute("data-value");
+      // Every player has their own dice, next to their yard; the roller's dice shows the roll everywhere.
+      const shown = async (q) => q.locator(`[data-testid=dice-cube][data-color=${st.color}]`).getAttribute("data-value");
       for (let i = 0; i < 50 && ((await shown(A)) !== String(g.last_roll) || (await shown(B)) !== String(g.last_roll)); i++) await A.waitForTimeout(100);
-      ok((await shown(A)) === String(g.last_roll) && (await shown(B)) === String(g.last_roll), `3D dice: both screens land on the server's roll (${g.last_roll})`);
+      ok((await shown(A)) === String(g.last_roll) && (await shown(B)) === String(g.last_roll), `3D dice: the roller's dice lands on the server's roll (${g.last_roll}) on both screens`);
+      ok((await A.locator("[data-testid=dice-cube]").count()) === 2, "one dice per player, in their own panel");
     }
     if (st.token !== null) {
-      await p.getByRole("button", { name: new RegExp(`^Move token ${st.token + 1}:`) }).click();
+      // Tap the token itself on the board (dispatched to that exact token, so stacked ones can't be mixed up).
+      await p.locator(`[data-token="${st.color}-${st.token}"][data-movable]`).dispatchEvent("click");
       g = await waitSeq(g.seq);
       const pos = g.state.tokens[st.color][st.token];
       const other = st.color === "red" ? B : A;
@@ -313,7 +316,7 @@ try {
   await C.waitForURL(`${BASE}/`);
   g3 = await waitSeq(g3.seq);
   ok(g3.state.forfeited?.[0] === "yellow" && g3.state.turn === "red", "leaving mid-game: Priya is skipped (turn passes to red)");
-  await A.getByText("Left").waitFor();
+  await A.locator("[data-panel=yellow]").getByText("Left", { exact: true }).waitFor();
   // Fast-forward (test only, with the service key): red one step from finishing.
   await admin.from("ludo_games").update({ state: { ...g3.state, tokens: { ...g3.state.tokens, red: [56, 56, 56, 55] } } }).eq("id", g3.id);
   await A.getByRole("button", { name: "Roll the dice" }).click();

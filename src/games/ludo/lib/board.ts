@@ -65,4 +65,8 @@ export function tokenPoint(color: Color, p: number, token: number): Pt {
   return HOME_SPOT[color];
 }
 
-export const COLOR_HEX: Record<Color, string> = { red: "#ef4444", green: "#10b981", yellow: "#f59e0b", blue: "#0ea5e9" };
+/** Bright, saturated piece colours (the board keeps its own light palette in both themes). */
+export const COLOR_HEX: Record<Color, string> = { red: "#e8222d", green: "#11a745", yellow: "#f8c20c", blue: "#1a73e8" };
+/** Lighter / darker shades of each colour, for the 3D tokens. */
+export const COLOR_LIGHT: Record<Color, string> = { red: "#ff7a7f", green: "#5fe08a", yellow: "#ffe27a", blue: "#7ab4ff" };
+export const COLOR_DARK: Record<Color, string> = { red: "#9c0f17", green: "#08702d", yellow: "#b78a00", blue: "#0d4fa6" };

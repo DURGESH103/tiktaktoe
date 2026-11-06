@@ -13,6 +13,7 @@ export const HAPTICS = {
   capture: [50, 40, 80],
   home: [20, 50, 20, 50, 40],
   turn: 20,
+  hop: 6,
 } satisfies Record<string, number | number[]>;
 
 export type HapticName = keyof typeof HAPTICS;

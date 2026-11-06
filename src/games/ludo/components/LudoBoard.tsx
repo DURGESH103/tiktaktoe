@@ -3,24 +3,31 @@
 import { motion, type TargetAndTransition, type Transition } from "framer-motion";
 import { memo, useMemo, useState } from "react";
 import { HOME, LAST_LOOP, SAFE_SQUARES, START, YARD, type Color, type LudoState } from "../engine";
-import { COLOR_HEX, HOME_COLUMN, LOOP, tokenPoint, YARD_ORIGIN, type Pt } from "../lib/board";
+import { COLOR_DARK, COLOR_HEX, COLOR_LIGHT, HOME_COLUMN, LOOP, tokenPoint, YARD_ORIGIN, type Pt } from "../lib/board";
 import { HOP_S, KNOCK_S, planMotion, type TokenMotion } from "../lib/motion";
 
-const R = 0.36; // token radius (cells)
+const COLORS = ["red", "green", "yellow", "blue"] as const;
 
-// The board keeps its own palette in both themes, like a real board (light squares, grey lines).
-const BOARD_BG = "#f8fafc";
+// The board keeps its own palette in both themes, like a real board (white squares, grey lines).
 const SQUARE = "#ffffff";
-const LINE = "#cbd5e1";
-const STAR = "#94a3b8";
-const RING = "#111827";
+const LINE = "#a3a9b5";
+const STAR = "#7c8494";
+const EDGE = "#1f2433";
+
+/** Map-pin token, drawn around (0, 0) = the middle of its square; the tip rests just below it. */
+const PIN = "M0 0.3 C-0.1 0.17 -0.3 0.02 -0.3 -0.2 A0.3 0.3 0 1 1 0.3 -0.2 C0.3 0.02 0.1 0.17 0 0.3Z";
+
+/** Home-column entrance square (p = 50) and the arrow direction into the column. */
+const ARROW: Record<Color, number> = { red: 0, green: 90, yellow: 180, blue: 270 }; // degrees: → ↓ ← ↑
 
 const SPRING: Transition = { type: "spring", stiffness: 260, damping: 26 };
 
 /**
- * The 15×15 board as SVG (crisp at any size). Tokens hop square by square along the track, a captured
- * token is knocked back to its yard once the capturer lands, and tokens that reach home glow. The ones
- * the current player can move pulse and are tappable. `movable` = token indexes of `movableColor`.
+ * The 15×15 board as SVG (crisp at any size), classic style: framed yards with nests, white track
+ * squares, coloured start squares and home columns, entrance arrows and a four-colour centre.
+ * Tokens are 3D map pins that hop square by square; a captured token is knocked back to its yard
+ * once the capturer lands ("Kill!"), and a token reaching home sparkles. Tokens the current player
+ * can move bounce, with a pulsing ring and a big tap area; the rest dim while a choice is pending.
  * Mount it with `key={game.id}` so a new game doesn't animate from the old one.
  */
 export function LudoBoard({
@@ -60,20 +67,21 @@ export function LudoBoard({
     }
   }
 
-  // Group tokens by square so several on one square are drawn side by side.
+  // Group tokens by square so several on one square are all visible (smaller, offset, "×3" badge).
   const placed = state.colors.flatMap((c) => (state.tokens[c] ?? []).map((p, i) => ({ c, i, p, pt: tokenPoint(c, p, i) })));
   const byCell = new Map<string, typeof placed>();
   for (const t of placed) {
     const k = `${t.pt.x},${t.pt.y}`;
     byCell.set(k, [...(byCell.get(k) ?? []), t]);
   }
+  const stacks = [...byCell.values()].filter((g) => g.length > 2 && g[0].p !== YARD);
 
   // Animation targets, rebuilt only when positions change (stable objects, so re-renders never restart a hop).
   const layout = placed.map((t) => {
     const group = byCell.get(`${t.pt.x},${t.pt.y}`)!;
     const n = group.length;
     const shift = n > 1 && t.p !== YARD ? offset(group.indexOf(t), n) : { x: 0, y: 0 };
-    return { key: `${t.c}-${t.i}`, x: t.pt.x + shift.x, y: t.pt.y + shift.y, scale: n > 1 && t.p !== YARD ? 0.72 : 1, pt: t.pt };
+    return { key: `${t.c}-${t.i}`, x: t.pt.x + shift.x, y: t.pt.y + shift.y, scale: n > 1 && t.p !== YARD ? 0.7 : 1, pt: t.pt };
   });
   const layoutKey = JSON.stringify(layout);
   const targets = useMemo(() => {
@@ -93,8 +101,8 @@ export function LudoBoard({
           if (k > 0) {
             const q = m.path[k - 1];
             xs.push((p.x + q.x) / 2);
-            ys.push((p.y + q.y) / 2 - 0.3);
-            sc.push(1.3);
+            ys.push((p.y + q.y) / 2 - 0.35);
+            sc.push(1.25);
           }
           xs.push(last ? l.x : p.x);
           ys.push(last ? l.y : p.y);
@@ -102,9 +110,9 @@ export function LudoBoard({
         });
         out[l.key] = { animate: { x: xs, y: ys, scale: sc }, transition: { duration: (m.path.length - 1) * HOP_S, ease: "linear", delay: m.delay }, motion: m };
       } else {
-        // Knocked back: flies up and over to its yard.
+        // Knocked back: flies up and over to its yard, spinning.
         out[l.key] = {
-          animate: { x: [m.from.x, (m.from.x + l.x) / 2, l.x], y: [m.from.y, Math.min(m.from.y, l.y) - 2, l.y], scale: [1, 1.8, 1] },
+          animate: { x: [m.from.x, (m.from.x + l.x) / 2, l.x], y: [m.from.y, Math.min(m.from.y, l.y) - 2.5, l.y], scale: [1, 1.9, 1], rotate: [0, 360, 720] },
           transition: { duration: KNOCK_S, ease: "easeOut", delay: m.delay },
           motion: m,
         };
@@ -113,14 +121,25 @@ export function LudoBoard({
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- layoutKey stands for `layout`
   }, [layoutKey, track.plan]);
-  // Tokens on the move are drawn last, on top of the others.
-  const hopping = (t: (typeof placed)[number]) => Number(targets[`${t.c}-${t.i}`]?.motion?.kind === "hop");
-  const order = [...placed].sort((a, b) => hopping(a) - hopping(b));
-  const bursts = Object.entries(track.plan).filter((e): e is [string, Extract<TokenMotion, { kind: "knock" }>] => e[1].kind === "knock");
+  // Tokens on the move (and the ones you can move) are drawn last, on top of the others.
+  const rank = (t: (typeof placed)[number]) =>
+    targets[`${t.c}-${t.i}`]?.motion?.kind === "hop" ? 2 : t.c === movableColor && movable.includes(t.i) ? 1 : 0;
+  const order = [...placed].sort((a, b) => rank(a) - rank(b));
+  const choosing = movableColor !== null && movable.length > 0;
+  const plan = Object.entries(track.plan);
 
   return (
-    <div className="mx-auto aspect-square w-full max-w-[min(94vw,30rem)]" style={maxSize ? { maxWidth: maxSize } : undefined}>
-      <svg viewBox="0 0 15 15" className="h-full w-full touch-manipulation select-none rounded-3xl shadow-xl" role="img" aria-label="Ludo board">
+    <div className="mx-auto aspect-square w-full" style={maxSize ? { maxWidth: maxSize } : undefined}>
+      <svg viewBox="-0.12 -0.12 15.24 15.24" className="h-full w-full touch-manipulation select-none drop-shadow-xl" role="img" aria-label="Ludo board">
+        <defs>
+          {COLORS.map((c) => (
+            <radialGradient key={c} id={`pin-${c}`} cx="0.35" cy="0.3" r="0.8">
+              <stop offset="0" stopColor={COLOR_LIGHT[c]} />
+              <stop offset="0.5" stopColor={COLOR_HEX[c]} />
+              <stop offset="1" stopColor={COLOR_DARK[c]} />
+            </radialGradient>
+          ))}
+        </defs>
         <StaticBoard turnColor={turnColor} />
         {order.map((t) => {
           const key = `${t.c}-${t.i}`;
@@ -133,56 +152,113 @@ export function LudoBoard({
               data-token={key}
               data-pos={t.p}
               data-motion={m?.kind}
+              data-movable={canMove || undefined}
               initial={false}
               animate={target?.animate}
               transition={target?.transition}
               onClick={canMove ? () => onMove(t.i) : undefined}
               style={{ cursor: canMove ? "pointer" : "default" }}
+              opacity={choosing && !canMove ? 0.5 : 1}
               aria-hidden
             >
-              {canMove && (
-                <motion.circle
-                  r={R + 0.12}
-                  fill="none"
-                  stroke={RING}
-                  strokeWidth={0.09}
-                  animate={{ scale: [1, 1.25, 1], opacity: [0.9, 0.3, 0.9] }}
-                  transition={{ duration: 1.1, repeat: Infinity }}
-                />
-              )}
-              {/* Bigger invisible hit area (≈ a whole cell) for fingers. */}
-              {canMove && <circle r={0.55} fill="transparent" />}
-              <circle r={R} fill={COLOR_HEX[t.c]} stroke="white" strokeWidth={0.07} />
-              <circle r={R * 0.42} fill="white" fillOpacity={0.55} />
               {t.p === HOME && (
                 // Home: a warm glow that flares up as the token arrives, then breathes.
                 <motion.circle
-                  r={R + 0.3}
+                  r={0.62}
                   fill="#fde047"
                   initial={m?.kind === "hop" && m.toHome ? { opacity: 0 } : false}
-                  animate={{ opacity: [0.85, 0.4, 0.85] }}
+                  animate={{ opacity: [0.85, 0.35, 0.85] }}
                   transition={{ duration: 2.4, repeat: Infinity, delay: m?.kind === "hop" ? m.delay + (m.path.length - 1) * HOP_S : 0 }}
                 />
               )}
-              {t.p === HOME && <circle r={R + 0.06} fill="none" stroke="#fde68a" strokeWidth={0.06} />}
+              {canMove && (
+                <>
+                  <motion.circle
+                    r={0.5}
+                    fill="none"
+                    stroke="white"
+                    strokeWidth={0.1}
+                    animate={{ scale: [0.85, 1.2, 0.85], opacity: [1, 0.4, 1] }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                  />
+                  <motion.circle
+                    r={0.5}
+                    fill="none"
+                    stroke={EDGE}
+                    strokeWidth={0.05}
+                    animate={{ scale: [0.85, 1.2, 0.85], opacity: [1, 0.4, 1] }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                  />
+                  {/* Big invisible tap area (≥ 40 px on a phone) for fingers. */}
+                  <circle r={0.9} fill="transparent" />
+                </>
+              )}
+              <motion.g animate={canMove ? { y: [0, -0.2, 0] } : { y: 0 }} transition={canMove ? { duration: 0.7, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }}>
+                <Pin c={t.c} />
+              </motion.g>
             </motion.g>
           );
         })}
-        {/* Capture: a burst where the token was hit, as the capturer lands. */}
-        {bursts.map(([k, b]) => (
-          <motion.circle
-            key={`burst-${k}-${b.from.x}-${b.from.y}`}
-            cx={b.from.x}
-            cy={b.from.y}
-            fill="none"
-            stroke="#f97316"
-            strokeWidth={0.14}
-            initial={{ r: 0.2, opacity: 0 }}
-            animate={{ r: [0.3, 1.5], opacity: [1, 0] }}
-            transition={{ duration: 0.5, delay: b.delay, ease: "easeOut" }}
-            aria-hidden
-          />
-        ))}
+        {stacks.map((g) => {
+          const pt = g[0].pt;
+          return (
+            <g key={`stack-${pt.x}-${pt.y}`} transform={`translate(${pt.x + 0.34} ${pt.y - 0.42})`} aria-hidden pointerEvents="none">
+              <circle r={0.26} fill={EDGE} stroke="white" strokeWidth={0.05} />
+              <text y={0.09} textAnchor="middle" fontSize={0.26} fontWeight={800} fill="white">
+                ×{g.length}
+              </text>
+            </g>
+          );
+        })}
+        {/* Capture: a burst and "Kill!" where the token was hit, as the capturer lands. */}
+        {plan.map(([k, m]) =>
+          m.kind === "knock" ? (
+            <g key={`kill-${k}-${m.from.x}-${m.from.y}`} transform={`translate(${m.from.x} ${m.from.y})`} pointerEvents="none" aria-hidden>
+              <motion.circle
+                fill="none"
+                stroke="#f97316"
+                strokeWidth={0.16}
+                initial={{ r: 0.2, opacity: 0 }}
+                animate={{ r: [0.3, 1.6], opacity: [1, 0] }}
+                transition={{ duration: 0.5, delay: m.delay, ease: "easeOut" }}
+              />
+              <motion.text
+                y={-0.7}
+                textAnchor="middle"
+                fontSize={0.95}
+                fontWeight={900}
+                fill="#fff"
+                stroke="#dc2626"
+                strokeWidth={0.12}
+                paintOrder="stroke"
+                initial={{ opacity: 0, scale: 0.3 }}
+                animate={{ opacity: [0, 1, 1, 0], scale: [0.3, 1.25, 1, 1] }}
+                transition={{ duration: 1.1, delay: m.delay, times: [0, 0.2, 0.75, 1] }}
+              >
+                Kill!
+              </motion.text>
+            </g>
+          ) : m.toHome ? (
+            // Home: sparkles burst out of the centre.
+            <g key={`spark-${k}`} transform="translate(7.5 7.5)" pointerEvents="none" aria-hidden>
+              {Array.from({ length: 10 }, (_, j) => {
+                const a = (j / 10) * Math.PI * 2;
+                return (
+                  <motion.polygon
+                    key={j}
+                    points={starPoints({ x: 0, y: 0 }, 0.22, 0.09)}
+                    fill={j % 2 ? "#fde047" : "#ffffff"}
+                    stroke="#f59e0b"
+                    strokeWidth={0.03}
+                    initial={{ x: 0, y: 0, opacity: 0, scale: 0.4 }}
+                    animate={{ x: Math.cos(a) * 1.8, y: Math.sin(a) * 1.8, opacity: [0, 1, 0], scale: [0.4, 1.2, 0.6] }}
+                    transition={{ duration: 0.8, delay: m.delay + (m.path.length - 1) * HOP_S, ease: "easeOut" }}
+                  />
+                );
+              })}
+            </g>
+          ) : null,
+        )}
       </svg>
       <p className="sr-only">
         {state.colors
@@ -193,9 +269,23 @@ export function LudoBoard({
   );
 }
 
+/** A 3D-looking map pin: soft shadow, base ring, shaded body, white cap with a highlight. */
+const Pin = memo(function Pin({ c }: { c: Color }) {
+  return (
+    <g transform="scale(1.3)">
+      <ellipse cx={0} cy={0.33} rx={0.27} ry={0.09} fill="#000" opacity={0.3} />
+      <ellipse cx={0} cy={0.29} rx={0.19} ry={0.07} fill={COLOR_DARK[c]} stroke="white" strokeWidth={0.04} />
+      <path d={PIN} fill={`url(#pin-${c})`} stroke={COLOR_DARK[c]} strokeWidth={0.04} />
+      <circle cx={0} cy={-0.2} r={0.13} fill="white" />
+      <circle cx={0} cy={-0.2} r={0.06} fill={COLOR_HEX[c]} />
+      <ellipse cx={-0.13} cy={-0.33} rx={0.07} ry={0.045} fill="white" opacity={0.75} transform="rotate(-30 -0.13 -0.33)" />
+    </g>
+  );
+});
+
 /** Spread up to 4 tokens sharing a square. */
 function offset(k: number, n: number): Pt {
-  const d = 0.22;
+  const d = 0.2;
   const spots: Pt[][] = [[], [{ x: 0, y: 0 }], [{ x: -d, y: 0 }, { x: d, y: 0 }], [{ x: -d, y: -d }, { x: d, y: -d }, { x: 0, y: d }]];
   const four = [{ x: -d, y: -d }, { x: d, y: -d }, { x: -d, y: d }, { x: d, y: d }];
   return (n <= 3 ? spots[n] : four)[k % 4] ?? { x: 0, y: 0 };
@@ -208,14 +298,22 @@ export function describe(c: Color, p: number): string {
   return `square ${((START[c] + p) % 52) + 1}`;
 }
 
-/** Everything that doesn't move. Memoised: it only re-renders when the turn changes (corner glow). */
+function starPoints(at: Pt, outer: number, inner: number) {
+  return Array.from({ length: 10 }, (_, i) => {
+    const r = i % 2 ? inner : outer;
+    const a = (Math.PI / 5) * i - Math.PI / 2;
+    return `${at.x + r * Math.cos(a)},${at.y + r * Math.sin(a)}`;
+  }).join(" ");
+}
+
+/** Everything that doesn't move. Memoised: it only re-renders when the turn changes (yard glow). */
 const StaticBoard = memo(function StaticBoard({ turnColor }: { turnColor: Color | null }) {
-  const colors = ["red", "green", "yellow", "blue"] as const;
-  const startOf = new Map(colors.map((c) => [START[c], c]));
+  const startOf = new Map(COLORS.map((c) => [START[c], c]));
+  const entrance = new Map(COLORS.map((c) => [(START[c] + LAST_LOOP) % 52, c]));
   return (
     <g>
-      <rect width={15} height={15} rx={0.6} fill={BOARD_BG} />
-      {/* Track squares */}
+      <rect x={-0.06} y={-0.06} width={15.12} height={15.12} rx={0.35} fill={SQUARE} stroke={EDGE} strokeWidth={0.12} />
+      {/* Track squares: white, grey grid lines; start squares in their colour (safe: white star). */}
       {LOOP.map((p, i) => {
         const startColor = startOf.get(i);
         return (
@@ -226,63 +324,82 @@ const StaticBoard = memo(function StaticBoard({ turnColor }: { turnColor: Color 
             width={1}
             height={1}
             fill={startColor ? COLOR_HEX[startColor] : SQUARE}
-            fillOpacity={startColor ? 0.85 : 1}
             stroke={LINE}
-            strokeWidth={0.03}
+            strokeWidth={0.035}
           />
         );
       })}
-      {SAFE_SQUARES.filter((s) => !startOf.has(s)).map((s) => (
-        <Star key={s} at={LOOP[s]} />
-      ))}
-      {colors.map((c) =>
+      {SAFE_SQUARES.map((s) => {
+        const start = startOf.has(s);
+        return (
+          <polygon
+            key={s}
+            points={starPoints(LOOP[s], 0.36, 0.16)}
+            fill="none"
+            stroke={start ? "white" : STAR}
+            strokeWidth={0.06}
+            strokeLinejoin="round"
+          />
+        );
+      })}
+      {COLORS.map((c) =>
         HOME_COLUMN[c].map((p, i) => (
-          <rect key={`${c}${i}`} x={p.x - 0.5} y={p.y - 0.5} width={1} height={1} fill={COLOR_HEX[c]} fillOpacity={0.75} stroke={LINE} strokeWidth={0.03} />
+          <rect key={`${c}${i}`} x={p.x - 0.5} y={p.y - 0.5} width={1} height={1} fill={COLOR_HEX[c]} stroke={LINE} strokeWidth={0.035} />
         )),
       )}
-      {/* Yards (the current player's corner glows) */}
-      {colors.map((c) => {
+      {/* Arrows at each home column's entrance (→ ↓ ← ↑). */}
+      {[...entrance].map(([sq, c]) => {
+        const p = LOOP[sq];
+        return (
+          <polygon
+            key={`arrow-${c}`}
+            points="-0.3,-0.12 0.08,-0.12 0.08,-0.28 0.34,0 0.08,0.28 0.08,0.12 -0.3,0.12"
+            fill={COLOR_HEX[c]}
+            stroke={COLOR_DARK[c]}
+            strokeWidth={0.03}
+            transform={`translate(${p.x} ${p.y}) rotate(${ARROW[c]})`}
+          />
+        );
+      })}
+      {/* Yards: thick coloured frame, white inner square, four coloured nests. The current player's glows. */}
+      {COLORS.map((c) => {
         const o = YARD_ORIGIN[c];
         const on = c === turnColor;
         return (
           <g key={c}>
-            <rect x={o.x + 0.1} y={o.y + 0.1} width={5.8} height={5.8} rx={0.6} fill={COLOR_HEX[c]} />
+            <rect x={o.x} y={o.y} width={6} height={6} fill={COLOR_HEX[c]} stroke={EDGE} strokeWidth={0.04} />
+            <rect x={o.x + 0.9} y={o.y + 0.9} width={4.2} height={4.2} rx={0.3} fill={SQUARE} stroke={COLOR_DARK[c]} strokeWidth={0.06} />
             {on && (
               <motion.rect
-                x={o.x + 0.1}
-                y={o.y + 0.1}
-                width={5.8}
-                height={5.8}
-                rx={0.6}
+                x={o.x + 0.25}
+                y={o.y + 0.25}
+                width={5.5}
+                height={5.5}
+                rx={0.4}
                 fill="none"
                 stroke="white"
-                strokeWidth={0.18}
-                animate={{ opacity: [0.9, 0.35, 0.9] }}
+                strokeWidth={0.22}
+                animate={{ opacity: [0.95, 0.25, 0.95] }}
                 transition={{ duration: 1.4, repeat: Infinity }}
               />
             )}
-            <rect x={o.x + 1} y={o.y + 1} width={4} height={4} rx={0.5} fill={SQUARE} />
             {[0, 1, 2, 3].map((i) => {
               const pt = tokenPoint(c, YARD, i);
-              return <circle key={i} cx={pt.x} cy={pt.y} r={0.5} fill={COLOR_HEX[c]} fillOpacity={0.25} />;
+              return (
+                <g key={i}>
+                  <circle cx={pt.x} cy={pt.y} r={0.68} fill={COLOR_HEX[c]} stroke={COLOR_DARK[c]} strokeWidth={0.06} />
+                  <circle cx={pt.x} cy={pt.y} r={0.5} fill="none" stroke="white" strokeOpacity={0.45} strokeWidth={0.05} />
+                </g>
+              );
             })}
           </g>
         );
       })}
-      {/* Centre home: four triangles */}
-      <polygon points="6,6 6,9 7.5,7.5" fill={COLOR_HEX.red} />
-      <polygon points="6,6 9,6 7.5,7.5" fill={COLOR_HEX.green} />
-      <polygon points="9,6 9,9 7.5,7.5" fill={COLOR_HEX.yellow} />
-      <polygon points="6,9 9,9 7.5,7.5" fill={COLOR_HEX.blue} />
+      {/* Centre home: four triangles in the yard colours. */}
+      <polygon points="6,6 6,9 7.5,7.5" fill={COLOR_HEX.red} stroke={EDGE} strokeWidth={0.04} />
+      <polygon points="6,6 9,6 7.5,7.5" fill={COLOR_HEX.green} stroke={EDGE} strokeWidth={0.04} />
+      <polygon points="9,6 9,9 7.5,7.5" fill={COLOR_HEX.yellow} stroke={EDGE} strokeWidth={0.04} />
+      <polygon points="6,9 9,9 7.5,7.5" fill={COLOR_HEX.blue} stroke={EDGE} strokeWidth={0.04} />
     </g>
   );
 });
-
-function Star({ at }: { at: Pt }) {
-  const pts = Array.from({ length: 10 }, (_, i) => {
-    const r = i % 2 ? 0.16 : 0.36;
-    const a = (Math.PI / 5) * i - Math.PI / 2;
-    return `${at.x + r * Math.cos(a)},${at.y + r * Math.sin(a)}`;
-  }).join(" ");
-  return <polygon points={pts} fill={STAR} />;
-}

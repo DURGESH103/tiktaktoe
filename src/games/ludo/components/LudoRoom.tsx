@@ -97,20 +97,41 @@ export function LudoRoom({ code }: { code: string }) {
     router.push("/");
   }
 
-  const shell = (children: React.ReactNode) => (
+  // `playing`: a game is on. "Leave game" (tap twice) replaces the back button, and the page is laid
+  // out to fit one phone screen.
+  const shell = (children: React.ReactNode, playing = false) => (
     <div className="min-h-dvh">
       <AppHeader
         left={
           <div className="flex items-center gap-2">
-            <Link href="/" aria-label="Back to home" className="glass grid h-12 w-12 place-items-center rounded-2xl">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-            </Link>
-            <span className="glass rounded-2xl px-3 py-2 font-display text-sm font-semibold tracking-[0.2em]">
-              <span className="sr-only">Room code </span>
-              {code}
-            </span>
+            {playing ? (
+              <button
+                type="button"
+                onClick={() => (confirmLeave ? leave() : setConfirmLeave(true))}
+                aria-label={confirmLeave ? "Tap again: leaving counts as last place" : "Leave game"}
+                className={clsx(
+                  "glass flex h-12 min-w-12 items-center justify-center gap-1.5 rounded-2xl px-3 text-sm font-semibold transition-colors",
+                  confirmLeave && "!bg-danger text-white",
+                )}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l-4-4 4-4M6 12h10" />
+                </svg>
+                {confirmLeave && <span aria-hidden>Leave = last</span>}
+              </button>
+            ) : (
+              <Link href="/" aria-label="Back to home" className="glass grid h-12 w-12 place-items-center rounded-2xl">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              </Link>
+            )}
+            {!(playing && confirmLeave) && (
+              <span className="glass rounded-2xl px-3 py-2 font-display text-sm font-semibold tracking-[0.2em]">
+                <span className="sr-only">Room code </span>
+                {code}
+              </span>
+            )}
           </div>
         }
         extra={<MuteToggle />}
@@ -119,10 +140,13 @@ export function LudoRoom({ code }: { code: string }) {
       <main
         style={aboveSheet != null ? { height: aboveSheet } : undefined}
         className={clsx(
-          "safe-x mx-auto flex w-full max-w-md flex-col gap-4",
+          "safe-x mx-auto flex w-full max-w-md flex-col",
+          playing ? "gap-2" : "gap-4",
           aboveSheet != null
             ? "fixed inset-x-0 top-0 z-30 overflow-y-auto overscroll-contain bg-bg pb-3 pt-[calc(env(safe-area-inset-top)+0.5rem)]"
-            : "pb-[calc(env(safe-area-inset-bottom)+5.5rem)] pt-2",
+            : playing
+              ? "min-h-[calc(100dvh-4.25rem-env(safe-area-inset-top))] pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-1"
+              : "pb-[calc(env(safe-area-inset-bottom)+5.5rem)] pt-2",
         )}
       >
         {children}
@@ -185,15 +209,14 @@ export function LudoRoom({ code }: { code: string }) {
           />
           <ReactionLayer reactions={reactions} me={r.me} />
         </div>
+        {/* Reactions, with the chat button floating just to their right. */}
         {aboveSheet == null && (
-          <>
+          <div className="mt-auto pr-[4.25rem]">
             <ReactionBar onReact={r.react} />
-            <Button variant={confirmLeave ? "danger" : "ghost"} onClick={() => (confirmLeave ? leave() : setConfirmLeave(true))} className="mx-auto">
-              {confirmLeave ? "Tap again: leaving counts as last place" : "Leave game"}
-            </Button>
-          </>
+          </div>
         )}
       </>,
+      true,
     );
   }
   // Results stay up even if the table closed meanwhile (e.g. the host left during the game).
