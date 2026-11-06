@@ -30,6 +30,11 @@ async function newPlayer(name) {
   pages[name] = page;
   page.setDefaultTimeout(60_000);
   page.on("pageerror", (e) => console.log(`  [${name} page error] ${e.message}`));
+  if (process.env.DEBUG_RPC) {
+    page.on("request", (q) => q.url().includes("/rpc/") && console.log(`  [${name}] → ${q.url().split("/rpc/")[1]} ${Date.now() % 100000}`));
+    page.on("requestfinished", (q) => q.url().includes("/rpc/") && console.log(`  [${name}] ← ${q.url().split("/rpc/")[1]} ${Date.now() % 100000}`));
+    page.on("requestfailed", (q) => q.url().includes("/rpc/") && console.log(`  [${name}] ✗ ${q.url().split("/rpc/")[1]} ${q.failure()?.errorText}`));
+  }
   await page.goto(BASE);
   await page.locator("#display-name").fill(name);
   await page.getByRole("button", { name: "Let's play" }).click();
@@ -178,7 +183,7 @@ try {
       await p.getByRole("button", { name: new RegExp(`^Move token ${st.token + 1}:`) }).click();
       g = await waitSeq(g.seq);
     }
-    if (JSON.stringify(g.state) !== JSON.stringify(sortKeys(st.after))) {
+    if (JSON.stringify(sortKeys(g.state)) !== JSON.stringify(sortKeys(st.after))) {
       if (!mismatch++) console.log(`    step ${n}: server ${JSON.stringify(g.state)}\n             plan   ${JSON.stringify(st.after)}`);
     }
     if (n === plan.captureAt) {

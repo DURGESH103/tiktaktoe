@@ -135,7 +135,7 @@ export function LudoRoom({ code }: { code: string }) {
     return shell(
       <>
         <div className="relative">
-          <LudoGame game={game} me={r.me} players={r.players} busy={r.busy} error={r.actionError} onRoll={() => void r.rollDice()} onMove={(t) => void r.moveToken(t)} />
+          <LudoGame game={game} me={r.me} players={r.players} pending={r.pending} error={r.actionError} onRoll={() => void r.rollDice()} onMove={(t) => void r.moveToken(t)} />
           <ReactionLayer reactions={r.reactions} me={r.me} />
         </div>
         <ReactionBar onReact={r.react} />
@@ -197,7 +197,7 @@ export function LudoRoom({ code }: { code: string }) {
             ]}
             disabled={r.busy}
             isDisabled={(v) => Number(v) < seated.length}
-            onChange={(v) => void r.setOptions(Number(v), r.settings!.mode)}
+            onChange={(v) => void r.setOptions({ maxPlayers: Number(v) })}
           />
           <Segmented
             label="Mode"
@@ -207,7 +207,7 @@ export function LudoRoom({ code }: { code: string }) {
               { value: "quick", label: "Quick ⚡" },
             ]}
             disabled={r.busy}
-            onChange={(v) => void r.setOptions(max, v as LudoMode)}
+            onChange={(v) => void r.setOptions({ mode: v as LudoMode })}
           />
           <p className="-mt-2 text-xs text-muted">
             {r.settings.mode === "quick" ? "Quick: everyone starts with one token already out." : "Classic: roll a 6 to bring a token out."} Changing options asks everyone to

@@ -18,7 +18,7 @@ export function LudoGame({
   game,
   me,
   players,
-  busy,
+  pending,
   error,
   onRoll,
   onMove,
@@ -26,7 +26,8 @@ export function LudoGame({
   game: LudoGameRow;
   me: string;
   players: Record<string, Player>;
-  busy: boolean;
+  /** The game request in flight, if any. */
+  pending: "start" | "roll" | "move" | null;
   error: ErrorCode | null;
   onRoll: () => void;
   onMove: (token: number) => void;
@@ -97,7 +98,7 @@ export function LudoGame({
       <div className="flex items-center gap-3">
         <Dice
           value={game.last_roll}
-          rolling={busy && myTurn && s.phase === "roll"}
+          rolling={pending === "roll"}
           canRoll={myTurn && s.phase === "roll"}
           onRoll={onRoll}
           color={COLOR_HEX[s.turn]}
@@ -110,7 +111,7 @@ export function LudoGame({
                 const to = from === -1 ? 0 : from + (s.dice ?? 0);
                 return (
                   <li key={i}>
-                    <Button variant="secondary" className="w-full !justify-start !px-3 text-sm" disabled={busy} onClick={() => onMove(i)}>
+                    <Button variant="secondary" className="w-full !justify-start !px-3 text-sm" disabled={pending !== null} onClick={() => onMove(i)}>
                       Move token {i + 1}: {describe(s.turn, from)} → {describe(s.turn, to)}
                     </Button>
                   </li>

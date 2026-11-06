@@ -202,17 +202,36 @@ export function useLudoRoom(code: string, me: string | null) {
   );
 
   const setReady = useCallback((ready: boolean) => room && call("set_ludo_ready", { p_room_id: room.id, p_ready: ready }), [call, room]);
+  // Option changes build on the latest *requested* settings, not what's on screen: tapping "2" then
+  // "Quick" quickly must not send the old table size with the mode change (it undid the "2").
+  // They're also sent one at a time, so they reach the server in the order they were tapped.
+  const requested = useRef<{ max: number; mode: string } | null>(null);
+  const optionsQueue = useRef<Promise<unknown>>(Promise.resolve());
   const setOptions = useCallback(
-    (maxPlayers: number, mode: string) => room && call("set_ludo_options", { p_room_id: room.id, p_max_players: maxPlayers, p_mode: mode }),
-    [call, room],
+    (change: { maxPlayers?: number; mode?: string }) => {
+      if (!room || !settings) return;
+      const base = requested.current ?? { max: settings.max_players, mode: settings.mode };
+      const next = { max: change.maxPlayers ?? base.max, mode: change.mode ?? base.mode };
+      requested.current = next;
+      const run = optionsQueue.current.then(() => call("set_ludo_options", { p_room_id: room.id, p_max_players: next.max, p_mode: next.mode }));
+      optionsQueue.current = run.finally(() => {
+        if (requested.current === next) requested.current = null;
+      });
+      return run;
+    },
+    [call, room, settings],
   );
   // Game actions return the updated game, applied at once (no waiting for the realtime echo).
+  // Which game request is in flight. The dice spins only for a pending *roll*: a move whose reply
+  // arrives after its realtime echo ("your roll again") must not set the dice spinning.
+  const [pending, setPending] = useState<"start" | "roll" | "move" | null>(null);
+  // Game actions return the updated game, applied at once (no waiting for the realtime echo).
   const act = useCallback(
-    async (fn: string, args: Record<string, unknown>) => {
-      setBusy(true);
+    async (kind: "start" | "roll" | "move", fn: string, args: Record<string, unknown>) => {
+      setPending(kind);
       setActionError(null);
       const { data, error } = await sb.rpc(fn, args);
-      setBusy(false);
+      setPending(null);
       if (error) {
         const code = toErrorCode(error);
         console.warn(`[ludo] ${fn} failed:`, error);
@@ -226,9 +245,12 @@ export function useLudoRoom(code: string, me: string | null) {
     },
     [sb, loadTable, applyGame],
   );
-  const start = useCallback(() => room && act("start_ludo", { p_room_id: room.id }), [act, room]);
-  const rollDice = useCallback(() => game && act("roll_dice", { p_game_id: game.id, p_seq: game.seq }), [act, game]);
-  const moveToken = useCallback((token: number) => game && act("move_token", { p_game_id: game.id, p_token: token, p_seq: game.seq }), [act, game]);
+  const start = useCallback(() => room && act("start", "start_ludo", { p_room_id: room.id }), [act, room]);
+  const rollDice = useCallback(() => game && act("roll", "roll_dice", { p_game_id: game.id, p_seq: game.seq }), [act, game]);
+  const moveToken = useCallback(
+    (token: number) => game && act("move", "move_token", { p_game_id: game.id, p_token: token, p_seq: game.seq }),
+    [act, game],
+  );
 
   const leave = useCallback(async () => {
     if (room) await sb.rpc("leave_room", { p_room_id: room.id });
@@ -244,5 +266,5 @@ export function useLudoRoom(code: string, me: string | null) {
   );
 
   const isHost = !!room && room.player_x === me;
-  return { loading, error, actionError, busy, room, settings, seats, players, game, me, isHost, presentIds, connection, reactions, react, setReady, setOptions, start, rollDice, moveToken, leave };
+  return { loading, error, actionError, busy: busy || pending === "start", pending, room, settings, seats, players, game, me, isHost, presentIds, connection, reactions, react, setReady, setOptions, start, rollDice, moveToken, leave };
 }
