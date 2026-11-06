@@ -3,6 +3,7 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectionState, Reaction } from "@/hooks/useGameRoom";
+import { useVisibleInterval } from "@/hooks/useVisibleInterval";
 import { toErrorCode, type ErrorCode } from "@/lib/errors";
 import { createRateLimiter, isReaction, type ReactionEmoji } from "@/lib/reactions";
 import { getSupabase } from "@/lib/supabase/client";
@@ -10,6 +11,12 @@ import type { Player, Room } from "@/types/db";
 import type { LudoSeat, LudoSettings } from "../types";
 
 const REACTION_TTL_MS = 2400;
+
+/** State updater that keeps the current value when the new one is identical (by content). */
+const keep =
+  <T,>(next: T) =>
+  (cur: T): T =>
+    JSON.stringify(cur) === JSON.stringify(next) ? cur : next;
 let reactionSeq = 0;
 
 /**
@@ -55,9 +62,10 @@ export function useLudoRoom(code: string, me: string | null) {
       const ids = list.map((s) => s.player_id);
       const ps = ids.length ? await sb.from("players").select("*").in("id", ids) : { data: [] };
       if (seq !== loadSeq.current) return;
-      setSeats(list);
-      setSettings((ls.data as LudoSettings | null) ?? null);
-      if (ps.data) setPlayers(Object.fromEntries((ps.data as Player[]).map((p) => [p.id, p])));
+      // keep(): an unchanged re-sync leaves state as-is, so nothing re-renders (no flicker).
+      setSeats(keep(list));
+      setSettings(keep((ls.data as LudoSettings | null) ?? null));
+      if (ps.data) setPlayers(keep(Object.fromEntries((ps.data as Player[]).map((p) => [p.id, p]))));
     },
     [sb],
   );
@@ -143,21 +151,22 @@ export function useLudoRoom(code: string, me: string | null) {
   }, [me, sb, refresh, loadTable, showReaction]);
 
   // Safety net for dropped realtime updates (delivery isn't guaranteed): re-read the room and seats
-  // every few seconds. Not join_room — that could re-seat someone who just left.
-  useEffect(() => {
-    if (!room || room.game_type !== "ludo" || room.status === "abandoned") return;
-    const id = room.id;
-    const t = setInterval(async () => {
-      if (document.visibilityState !== "visible") return;
-      const { data } = await sb.from("rooms").select("*").eq("id", id).maybeSingle();
+  // every few seconds while the room is active and the tab visible. Not join_room — that could
+  // re-seat someone who just left.
+  const roomId = room?.id;
+  useVisibleInterval(
+    async () => {
+      if (!roomId) return;
+      const { data } = await sb.from("rooms").select("*").eq("id", roomId).maybeSingle();
       if (data) {
         roomRef.current = data as Room;
-        setRoom(data as Room);
+        setRoom(keep<Room | null>(data as Room));
       }
-      await loadTable(id);
-    }, 5000);
-    return () => clearInterval(t);
-  }, [room?.id, room?.game_type, room?.status, sb, loadTable]);
+      await loadTable(roomId);
+    },
+    5000,
+    !!room && room.game_type === "ludo" && (room.status === "waiting" || room.status === "playing"),
+  );
 
   const call = useCallback(
     async (fn: string, args: Record<string, unknown>) => {

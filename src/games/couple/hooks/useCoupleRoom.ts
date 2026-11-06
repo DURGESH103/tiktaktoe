@@ -3,6 +3,7 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectionState, Reaction } from "@/hooks/useGameRoom";
+import { useVisibleInterval } from "@/hooks/useVisibleInterval";
 import { toErrorCode, type ErrorCode } from "@/lib/errors";
 import { createRateLimiter, isReaction, type ReactionEmoji } from "@/lib/reactions";
 import { getSupabase } from "@/lib/supabase/client";
@@ -132,13 +133,8 @@ export function useCoupleRoom(code: string, me: string | null, options: Options 
   }, [me, sb, refresh, loadPlayers, showReaction]);
 
   // Safety net for dropped realtime updates (delivery isn't guaranteed): while waiting for the
-  // partner, re-check every few seconds so "partner joined" can't get lost.
-  const waiting = room?.status === "waiting";
-  useEffect(() => {
-    if (!waiting) return;
-    const t = setInterval(() => document.visibilityState === "visible" && void refresh(), 5000);
-    return () => clearInterval(t);
-  }, [waiting, refresh]);
+  // partner, re-check every few seconds so "partner joined" can't get lost. Visible tab only.
+  useVisibleInterval(() => void refresh(), 5000, room?.status === "waiting");
 
   const react = useCallback(
     (emoji: ReactionEmoji) => {

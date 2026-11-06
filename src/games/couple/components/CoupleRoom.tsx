@@ -18,6 +18,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { MuteToggle } from "@/components/ui/MuteToggle";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useOpponentPresence } from "@/hooks/useOpponentPresence";
+import { useVisibleInterval } from "@/hooks/useVisibleInterval";
 import { useRoomFlag } from "@/hooks/useRoomFlag";
 import { ERROR_COPY } from "@/lib/errors";
 import { roomPath } from "@/lib/games";
@@ -49,6 +50,9 @@ export function CoupleRoom({ code }: { code: string }) {
   const game = useCoupleSession(user?.id ?? null);
   const r = useCoupleRoom(code, user?.id ?? null, { configure: game.configure, onResync: game.onResync });
   const presence = useOpponentPresence(r.opponentId, r.presentIds);
+  // Safety net for dropped realtime updates: re-sync the session every 5s while the room is
+  // active and the tab visible (paused in the background).
+  useVisibleInterval(() => r.room && void game.onResync(r.room.id), 5000, r.room?.status === "playing");
   const [lang, setLang] = useCoupleLang();
   const [announcement, setAnnouncement] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
