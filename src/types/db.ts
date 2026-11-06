@@ -1,7 +1,7 @@
 export type Mark = "X" | "O";
 export type CellValue = Mark | null;
 export type RoomStatus = "waiting" | "playing" | "abandoned";
-export type GameType = "tictactoe" | "couple";
+export type GameType = "tictactoe" | "couple" | "ludo";
 export type GameStatus = "playing" | "finished" | "abandoned";
 export type Winner = Mark | "draw";
 
@@ -98,6 +98,10 @@ export interface RoomInvite {
   status: RoomStatus;
   is_full: boolean;
   game_type?: GameType;
+  /** Ludo only */
+  players?: number;
+  max_players?: number;
+  mode?: "classic" | "quick";
 }
 
 export interface RoomMessage {

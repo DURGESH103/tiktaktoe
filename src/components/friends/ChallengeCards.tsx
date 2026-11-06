@@ -25,7 +25,8 @@ export function ChallengeCards() {
   const offset = social?.clockOffset ?? 0;
   const live = challenges.filter((c) => c.status === "pending" && secondsLeft(c, offset, now) > 0);
   const incoming = live.find((c) => c.direction === "in");
-  const outgoing = live.find((c) => c.direction === "out");
+  // Lobby invites (Ludo, with a room code) are tracked in the lobby itself, not as a pop-up.
+  const outgoing = live.find((c) => c.direction === "out" && !(c.game_type === "ludo" && c.room_code));
 
   // Tick only while something is counting down.
   const anyPending = challenges.some((c) => c.status === "pending");

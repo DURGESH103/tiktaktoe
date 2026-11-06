@@ -62,12 +62,14 @@ export function CompatRound(props: Props) {
         </motion.div>
       </AnimatePresence>
 
+      {/* Keyed by round: if the partner moves on before I see the reveal, the next question must start
+          fresh (it used to keep my previous picks and step). */}
       {revealed ? (
-        <Reveal {...props} />
+        <Reveal key={round.id} {...props} />
       ) : mine && !editing ? (
-        <Waiting {...props} partnerName={partnerName} onChange={() => setEditing(true)} />
+        <Waiting key={round.id} {...props} partnerName={partnerName} onChange={() => setEditing(true)} />
       ) : (
-        <AnswerSteps {...props} partnerName={partnerName} partnerAnswered={partnerAnswered} onDone={() => setEditing(false)} />
+        <AnswerSteps key={round.id} {...props} partnerName={partnerName} partnerAnswered={partnerAnswered} onDone={() => setEditing(false)} />
       )}
     </div>
   );

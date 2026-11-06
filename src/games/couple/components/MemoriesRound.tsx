@@ -62,12 +62,14 @@ export function MemoriesRound(props: Props) {
         </motion.div>
       </AnimatePresence>
 
+      {/* Keyed by round: if the partner moves on before I see the reveal, the next question must start
+          fresh (it used to keep my previous picks and step). */}
       {revealed ? (
-        <Reveal {...props} partnerName={partnerName} />
+        <Reveal key={round.id} {...props} partnerName={partnerName} />
       ) : mine && !editing ? (
-        <Waiting {...props} partnerName={partnerName} onChange={() => setEditing(true)} />
+        <Waiting key={round.id} {...props} partnerName={partnerName} onChange={() => setEditing(true)} />
       ) : (
-        <Write {...props} partnerName={partnerName} partnerAnswered={partnerAnswered} onDone={() => setEditing(false)} />
+        <Write key={round.id} {...props} partnerName={partnerName} partnerAnswered={partnerAnswered} onDone={() => setEditing(false)} />
       )}
     </div>
   );

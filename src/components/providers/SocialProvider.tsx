@@ -35,7 +35,8 @@ interface Social {
   removeFriend: (handle: string) => Promise<ErrorCode | null>;
   block: (handle: string) => Promise<ErrorCode | null>;
   unblock: (handle: string) => Promise<ErrorCode | null>;
-  challenge: (handle: string, gameType?: GameType) => Promise<ErrorCode | null>;
+  /** With a room code (Ludo only): invite the friend into that lobby instead of a new room. */
+  challenge: (handle: string, gameType?: GameType, roomCode?: string) => Promise<ErrorCode | null>;
   respondChallenge: (id: string, accept: boolean) => Promise<ErrorCode | null>;
   cancelChallenge: (id: string) => Promise<ErrorCode | null>;
   toast: (t: Omit<Toast, "id">) => void;
@@ -137,7 +138,7 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
   // ------------------------------------------------------------ presence
   // One shared channel, keyed by public handle (never the auth id). Offline = not present.
   const myState: PresenceState =
-    pathname?.startsWith("/game/") || pathname?.startsWith("/couple/") ? "in_game" : typeof document !== "undefined" && document.visibilityState === "hidden" ? "away" : "online";
+    /^\/(game|couple|ludo)\//.test(pathname ?? "") ? "in_game" : typeof document !== "undefined" && document.visibilityState === "hidden" ? "away" : "online";
   const [, forceVisibility] = useState(0);
   const myStateRef = useRef(myState);
   myStateRef.current = myState;
@@ -294,8 +295,10 @@ export function SocialProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const challenge = useCallback(
-    async (h: string, gameType: GameType = "tictactoe"): Promise<ErrorCode | null> => {
-      const { data: d, error } = await getSupabase().rpc("send_challenge", { p_handle: h, p_game_type: gameType });
+    async (h: string, gameType: GameType = "tictactoe", roomCode?: string): Promise<ErrorCode | null> => {
+      const args: Record<string, string> = { p_handle: h, p_game_type: gameType };
+      if (roomCode) args.p_room_code = roomCode;
+      const { data: d, error } = await getSupabase().rpc("send_challenge", args);
       if (error) {
         console.warn("[friends] send_challenge failed:", error);
         return toErrorCode(error);

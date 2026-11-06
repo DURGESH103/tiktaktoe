@@ -4,11 +4,14 @@ import type { GameType } from "@/types/db";
 export const GAMES: Record<GameType, { name: string; short: string; emoji: string; tagline: string }> = {
   tictactoe: { name: "Tic-Tac-Toe", short: "Tic-Tac-Toe", emoji: "❌⭕", tagline: "Classic, fast, a little competitive." },
   couple: { name: "Couple Challenge 💞", short: "Couple Challenge", emoji: "💞", tagline: "How well do you know each other?" },
+  ludo: { name: "Ludo 🎲", short: "Ludo", emoji: "🎲", tagline: "2–4 players. Roll, race, capture!" },
 };
 
-export const GAME_ORDER: GameType[] = ["tictactoe", "couple"];
+export const GAME_ORDER: GameType[] = ["tictactoe", "couple", "ludo"];
 
 /** URL of a room for its game. Unknown/missing types are Tic-Tac-Toe (rooms created before game types existed). */
 export function roomPath(code: string, gameType: GameType | null | undefined): string {
-  return gameType === "couple" ? `/couple/${code}` : `/game/${code}`;
+  if (gameType === "couple") return `/couple/${code}`;
+  if (gameType === "ludo") return `/ludo/${code}`;
+  return `/game/${code}`;
 }

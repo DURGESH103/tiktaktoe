@@ -7,7 +7,7 @@
     "dev:lan": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "test": "vitest run",
+    "test": "node scripts/check-secrets.mjs && vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "check:chat": "node scripts/check-chat.mjs",
@@ -15,7 +15,9 @@
     "e2e:tictactoe": "node scripts/e2e-tictactoe.mjs",
     "check:rooms": "node scripts/check-rooms.mjs",
     "e2e:couple": "node scripts/e2e-couple.mjs",
-    "check:memories": "node scripts/check-memories.mjs"
+    "check:memories": "node scripts/check-memories.mjs",
+    "prebuild": "node scripts/check-secrets.mjs",
+    "e2e:ludo": "node scripts/e2e-ludo.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

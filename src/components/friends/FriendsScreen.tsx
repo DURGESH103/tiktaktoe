@@ -222,7 +222,7 @@ function ChallengeButton({ player }: { player: PublicPlayer }) {
               )}
             >
               <span className="text-2xl" aria-hidden>
-                {g === "tictactoe" ? "❌" : "💞"}
+                {g === "tictactoe" ? "❌" : GAMES[g].emoji}
               </span>
               <span>
                 <span className="block font-semibold">{GAMES[g].name}</span>

@@ -1,10 +1,12 @@
 "use client";
 
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toErrorCode, type ErrorCode } from "@/lib/errors";
 import { getSupabase } from "@/lib/supabase/client";
 import type { CoupleAnswer, CoupleQuestion, CoupleRound, CoupleSession } from "../types";
+
+const RESYNC_MS = 5000;
 
 /**
  * Live state of the room's latest Couple session: rounds, questions and the answers I'm allowed
@@ -110,6 +112,16 @@ export function useCoupleSession(me: string | null) {
   const voteMemory = useCallback((roundId: string, matched: boolean) => call("vote_memory_match", { p_round_id: roundId, p_matched: matched }), [call]);
 
   const current = useMemo(() => rounds.find((r) => r.idx === session?.current_round) ?? null, [rounds, session?.current_round]);
+  // Safety net: Supabase Realtime doesn't guarantee delivery — very occasionally an update is
+  // dropped while the channel stays connected (seen in e2e runs). Re-sync every few seconds while
+  // the tab is visible, so a missed event costs a short delay instead of a stuck screen.
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible" && roomIdRef.current) void load(roomIdRef.current);
+    }, RESYNC_MS);
+    return () => clearInterval(t);
+  }, [load]);
+
   const answerOf = useCallback((roundId: string, playerId: string | null) => answers.find((a) => a.round_id === roundId && a.player_id === playerId) ?? null, [answers]);
 
   return { session, rounds, current, questions, answerOf, busy, error, me, configure, onResync: load, start, submit, next, quit, nextCard, startTimer, completeChallenge, confirmChallenge, submitMemory, voteMemory };

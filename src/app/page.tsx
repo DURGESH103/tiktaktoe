@@ -83,7 +83,7 @@ export default function HomePage() {
         </motion.section>
 
         {/* Game picker */}
-        <motion.div variants={item} role="radiogroup" aria-label="Choose a game" className="grid grid-cols-2 gap-3">
+        <motion.div variants={item} role="radiogroup" aria-label="Choose a game" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {GAME_ORDER.map((g) => (
             <GameCard key={g} game={g} selected={game === g} onSelect={() => setGame(g)} />
           ))}
@@ -93,9 +93,9 @@ export default function HomePage() {
           <GlassCard className={clsx("flex flex-col gap-3 p-5 transition-colors", game === "couple" && "theme-couple")}>
             <AnimatePresence mode="wait" initial={false}>
               <motion.div key={game} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}>
-                <h2 className="font-display text-lg font-semibold">{game === "tictactoe" ? "Play with a friend" : "Play together 💞"}</h2>
+                <h2 className="font-display text-lg font-semibold">{PANEL[game].title}</h2>
                 <p className="text-sm text-muted">
-                  {game === "tictactoe" ? "Create a room and send them the link." : "Compatibility tests, memories, questions and challenges for two."}
+                  {PANEL[game].body}
                 </p>
               </motion.div>
             </AnimatePresence>
@@ -103,7 +103,7 @@ export default function HomePage() {
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
                 <path d="M12 5v14M5 12h14" />
               </svg>
-              {game === "tictactoe" ? "Create game" : "Create Couple Challenge"}
+              {PANEL[game].create}
             </Button>
             {createError && (
               <p role="alert" className="text-sm text-danger">
@@ -179,6 +179,13 @@ export default function HomePage() {
   );
 }
 
+/** Text of the create panel for the selected game. */
+const PANEL: Record<GameType, { title: string; body: string; create: string }> = {
+  tictactoe: { title: "Play with a friend", body: "Create a room and send them the link.", create: "Create game" },
+  couple: { title: "Play together 💞", body: "Compatibility tests, memories, questions and challenges for two.", create: "Create Couple Challenge" },
+  ludo: { title: "Ludo for 2–4 🎲", body: "Create a table, pick 2, 3 or 4 players, and invite your friends.", create: "Create Ludo table" },
+};
+
 function GameCard({ game, selected, onSelect }: { game: GameType; selected: boolean; onSelect: () => void }) {
   const g = GAMES[game];
   return (
@@ -190,6 +197,8 @@ function GameCard({ game, selected, onSelect }: { game: GameType; selected: bool
       whileTap={{ scale: 0.97 }}
       className={clsx(
         "glass relative flex min-h-28 flex-col items-start justify-between gap-2 overflow-hidden rounded-3xl p-4 text-left transition-shadow",
+        // Third card: full width on phones (two per row), one row of three from sm up.
+        game === "ludo" && "col-span-2 sm:col-span-1",
         selected && (game === "couple" ? "ring-2 ring-rose-400/80" : "ring-2 ring-accent/80"),
       )}
     >
@@ -202,7 +211,7 @@ function GameCard({ game, selected, onSelect }: { game: GameType; selected: bool
         />
       )}
       <span className="relative text-2xl" aria-hidden>
-        {game === "tictactoe" ? <TicTacToeGlyph /> : "💞"}
+        {game === "tictactoe" ? <TicTacToeGlyph /> : g.emoji}
       </span>
       <span className="relative">
         <span className="block font-display font-semibold leading-tight">{g.short}</span>

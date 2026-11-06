@@ -28,6 +28,7 @@ export function useHistory(me: string | null) {
         sb
           .from("rooms")
           .select("id, code, player_x, player_o, games(*)")
+          .eq("game_type", "tictactoe") // history lists Tic-Tac-Toe rounds only
           .not("player_o", "is", null)
           .order("created_at", { ascending: false }),
         sb.rpc("get_my_stats"),

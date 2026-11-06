@@ -14,10 +14,13 @@ const ok = (cond, msg) => {
 
 const browser = await chromium.launch({ channel: process.env.BROWSER === "chrome" ? "chrome" : "msedge", headless: true });
 const phone = { viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
+const pages = {}; // every player's page, for failure screenshots
 async function newPlayer(name) {
   const page = await (await browser.newContext(phone)).newPage();
+  pages[name] = page;
   page.setDefaultTimeout(60_000);
   page.on("pageerror", (e) => console.log(`  [${name} page error] ${e.message}`));
+  if (process.env.DEBUG_CONSOLE) page.on("console", (m) => m.text().includes("[DBG]") && console.log(`  [${name}] ${m.text()}`));
   await page.goto(BASE);
   await page.locator("#display-name").fill(name);
   await page.getByRole("button", { name: "Let's play" }).click();
@@ -78,6 +81,7 @@ try {
   await B.getByRole("button", { name: /Add friend/ }).click();
   await A.goto(`${BASE}/friends?tab=requests`);
   await A.getByRole("button", { name: "Accept" }).click();
+  await A.getByRole("tab", { name: "Friends (1)" }).waitFor(); // the accept has landed before we navigate away
   await A.goto(`${BASE}/friends`);
   await B.goto(`${BASE}/friends`);
   await A.getByRole("button", { name: "Challenge Durgesh" }).click();
@@ -120,6 +124,8 @@ try {
   ok(true, "Next moves both players on");
 
   for (let q = 2; q <= 10; q++) {
+    await A.getByText(`Question ${q} of 10`).waitFor();
+    await B.getByText(`Question ${q} of 10`).waitFor();
     await pick(A, 0, 0); // Rahul guesses Durgesh = option 0 (wrong: Durgesh picks 1)
     await pick(B, 1, 0); // Durgesh guesses Rahul = option 0 (right)
     if (q === 3) {
@@ -166,15 +172,17 @@ try {
   await B.mouse.up();
   await A.getByText("Card 2 of 12").waitFor();
   ok(true, "swiping the card left draws the next card on both screens");
-  for (let c = 2; c <= 4; c++) {
-    await A.getByRole("button", { name: "Next card →" }).click();
-    await B.getByText(`Card ${c + 1} of 12`).waitFor();
-  }
-  ok((await A.getByText("Level up: Deep 💭").count()) === 1, "card 5 opens the Deep level");
-  for (let c = 5; c <= 11; c++) {
-    await (c % 2 ? A : B).getByRole("button", { name: "Next card →" }).click();
+  // Each tap waits for the tapping player's own screen to show the card first: a tap on a card the
+  // server has already moved past is (correctly) ignored, like a double tap.
+  const nextCard = async (p, c) => {
+    await p.getByText(`Card ${c} of 12`).waitFor();
+    await p.getByRole("button", { name: "Next card →" }).click();
     await A.getByText(`Card ${c + 1} of 12`).waitFor();
-  }
+    await B.getByText(`Card ${c + 1} of 12`).waitFor();
+  };
+  for (let c = 2; c <= 4; c++) await nextCard(A, c);
+  ok((await A.getByText("Level up: Deep 💭").count()) === 1, "card 5 opens the Deep level");
+  for (let c = 5; c <= 11; c++) await nextCard(c % 2 ? A : B, c);
   await A.getByRole("button", { name: "Finish 💞" }).click();
   await A.getByRole("heading", { name: "12 cards together" }).waitFor();
   await B.getByRole("heading", { name: "12 cards together" }).waitFor();
@@ -266,7 +274,7 @@ try {
   await write(B, "Manali");
   await A.getByRole("button", { name: "We matched ✅" }).click();
   await B.getByRole("button", { name: "Different" }).click();
-  await A.getByText(/You remember it differently/).waitFor();
+  await A.getByText("You remember it differently — that's okay 🙂").waitFor();
   ok((await A.getByLabel("20 points").count()) === 1, "one 'Different' vote → no points");
   for (let i = 2; i < 5; i++) {
     await B.getByRole("button", { name: "Next memory →" }).click();
@@ -298,6 +306,12 @@ try {
 } catch (e) {
   failures++;
   console.log("  ✗ FAIL", e.message.split("\n")[0]);
+  const waiting = e.message.split("\n").find((l) => l.includes("waiting for"));
+  if (waiting) console.log("    ", waiting.replace(/\x1b\[[0-9;]*m/g, "").trim());
+  if (process.env.SHOTS) {
+    for (const [name, p] of Object.entries(pages)) await p.screenshot({ path: `${process.env.SHOTS}/FAIL-${name}.png` }).catch(() => {});
+    console.log(`     screenshots: ${process.env.SHOTS}/FAIL-<player>.png`);
+  }
 }
 
 await browser.close();
