@@ -2,7 +2,7 @@ import { HOME, YARD, type Color } from "../engine";
 import { tokenPoint, type Pt } from "./board";
 
 /** Seconds per square when a token hops along the track. */
-export const HOP_S = 0.15;
+export const HOP_S = 0.22;
 /** Seconds a captured token takes to fly back to its yard. */
 export const KNOCK_S = 0.4;
 
