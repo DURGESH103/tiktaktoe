@@ -202,30 +202,33 @@ export function LudoGame({
         </AnimatePresence>
       </div>
 
-      <div className="relative mx-auto w-full" style={{ maxWidth: compact ? Math.max(180, compactHeight - 80) : "max(240px, calc(100dvh - 300px))" }}>
-        <LudoBoard
-          key={game.id}
-          state={s}
-          turnColor={s.finished ? null : s.turn}
-          movableColor={movable.length ? myColor : null}
-          movable={movable}
-          onMove={onMove}
-          names={names}
-          delay={moveDelay}
-        />
-        {iAmAway && !s.finished && (
-          <div role="alert" className="absolute inset-x-2 top-2 z-10 flex items-center gap-3 rounded-2xl border border-warn/40 bg-bg/95 p-2.5 shadow-lg">
-            <p className="min-w-0 flex-1 text-sm">You missed 3 turns, so your turns are being played automatically.</p>
-            <Button onClick={onResume} className="shrink-0 !px-3 text-sm">
-              I&apos;m back
-            </Button>
-          </div>
-        )}
-        {error && (
-          <p role="alert" className="absolute inset-x-4 bottom-2 z-10 rounded-xl bg-bg/95 px-3 py-1.5 text-center text-sm text-danger shadow">
-            {ERROR_COPY[error].body}
-          </p>
-        )}
+      {/* The board goes fully edge to edge on phones (the panels keep a small margin). */}
+      <div className="-mx-[2px]">
+        <div className="relative mx-auto w-full" style={{ maxWidth: compact ? Math.max(180, compactHeight - 80) : "max(240px, calc(100dvh - 300px))" }}>
+          <LudoBoard
+            key={game.id}
+            state={s}
+            turnColor={s.finished ? null : s.turn}
+            movableColor={movable.length ? myColor : null}
+            movable={movable}
+            onMove={onMove}
+            names={names}
+            delay={moveDelay}
+          />
+          {iAmAway && !s.finished && (
+            <div role="alert" className="absolute inset-x-2 top-2 z-10 flex items-center gap-3 rounded-2xl border border-warn/40 bg-bg/95 p-2.5 shadow-lg">
+              <p className="min-w-0 flex-1 text-sm">You missed 3 turns, so your turns are being played automatically.</p>
+              <Button onClick={onResume} className="shrink-0 !px-3 text-sm">
+                I&apos;m back
+              </Button>
+            </div>
+          )}
+          {error && (
+            <p role="alert" className="absolute inset-x-4 bottom-2 z-10 rounded-xl bg-bg/95 px-3 py-1.5 text-center text-sm text-danger shadow">
+              {ERROR_COPY[error].body}
+            </p>
+          )}
+        </div>
       </div>
 
       {compact ? (
