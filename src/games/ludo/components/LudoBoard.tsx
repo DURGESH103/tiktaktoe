@@ -23,8 +23,8 @@ const ARROW: Record<Color, number> = { red: 0, green: 90, yellow: 180, blue: 270
 const SPRING: Transition = { type: "spring", stiffness: 260, damping: 26 };
 
 /** The SVG viewBox: the 15×15 board plus a small margin inside the border. */
-const V0 = -0.3;
-const VS = 15.6;
+const V0 = -0.2;
+const VS = 15.4;
 const pct = (cells: number) => `${(cells / VS) * 100}%`;
 /** A box `size` cells wide with its top-left corner at board point (x, y). */
 const box = (x: number, y: number, size: number) => ({ left: pct(x - V0), top: pct(y - V0), width: pct(size), height: pct(size) });
@@ -392,7 +392,7 @@ const Pin = memo(function Pin({ c }: { c: Color }) {
   return (
     <svg viewBox="-0.5 -0.5 1 1" className="absolute inset-0 h-full w-full overflow-visible">
       {/* About one cell tall, tip near the bottom-centre (the padding inside the border keeps edge tokens clear). */}
-      <g transform="translate(0 0.04) scale(1.15)">
+      <g transform="translate(0 0.04) scale(1.2)">
         <ellipse cx={0} cy={0.33} rx={0.27} ry={0.08} fill="#000" opacity={0.3} />
         <ellipse cx={0} cy={0.29} rx={0.19} ry={0.07} fill={COLOR_DARK[c]} stroke="white" strokeWidth={0.04} />
         <path d={PIN} fill={`url(#pin-${c})`} stroke={COLOR_DARK[c]} strokeWidth={0.04} />
@@ -452,7 +452,7 @@ const StaticBoard = memo(function StaticBoard() {
           </radialGradient>
         ))}
       </defs>
-      <rect x={-0.24} y={-0.24} width={15.48} height={15.48} rx={0.5} fill={SQUARE} stroke={EDGE} strokeWidth={0.12} />
+      <rect x={-0.15} y={-0.15} width={15.3} height={15.3} rx={0.45} fill={SQUARE} stroke={EDGE} strokeWidth={0.12} />
       {/* Track squares: white, grey grid lines; start squares in their colour (safe: white star). */}
       {LOOP.map((p, i) => {
         const startColor = startOf.get(i);

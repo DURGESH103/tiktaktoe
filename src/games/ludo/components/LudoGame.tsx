@@ -179,7 +179,7 @@ export function LudoGame({
   const compactRow = [...new Set([myColor, s.finished ? null : s.turn].filter((c): c is Color => !!c))];
 
   return (
-    <div className="-mx-3 flex flex-col gap-1.5">
+    <div className="-mx-[14px] flex flex-col gap-1.5">
       {!compact && row(TOP_ROW, "Top players")}
 
       {/* Turn label (briefly "Roll again!", "No moves", … when they happen). */}
